@@ -1,0 +1,211 @@
+---
+title: "Reg_multiple"
+author: "Osvaldo"
+date: "26/3/2020"
+output: word_document
+bibliography: bibi.bibtex
+
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(lmtest)
+library(alr3)
+library(apaTables)
+library(GGally)#Graficos de dispercion multiples
+library(corrplot)#graficas de correlacion
+library(car)#vif
+```
+```{r datos,echo=FALSE}
+X0<-c(1,1,1,1,1,1,1,1,1,1,1)
+X1<-c(1,4,9,11,3,8,5,10,2,7,6)
+X2<-c(8,2,-8,-10,6,-6,0,-12,4,-2,-4)
+Y<- c(6,8,1,0,5,3,2,-4,10,-3,5)
+datos<-data.frame(X1,X2,Y)
+mati<-matrix(c(X0,X1,X2),ncol=3,nrow = 11)
+matit<-t(mati)#la transpuesta
+v1<-c(4.3705,-0.8495,-0.4086)
+v2<-c(-0.8495,0.1690,0.0822)
+v3<-c(-0.4086,0.0822,0.0422)
+mat_inv<-matrix(c(v1,v2,v3),ncol=3,nrow = 3)
+xt_y<-matit%*%Y
+b_est<-mat_inv%*%xt_y
+regresion<-lm(Y~X1+X2)
+```
+# Ejercicio A
+
+## Pruebas para el modelo
+
+### Verificación de relación lineal
+Para esto podemos usar una tabla de correlaciones
+```{r 1lineal}
+cor(x=datos,method = "pearson")
+```
+Que como vemos, tienen correlación las variables "X1" y "X2" con "Y". Podemos ver un gráfico para ver su comportamiento.
+
+```{r 2lineal,echo=FALSE}
+ggpairs(datos, lower = list(continuous = "smooth"),
+        diag = list(continuous = "densityDiag"),title = "Graficas de dispersión")
+#En la parte inferior izquierda mostrara la dispercion entre cada par de variables
+#En la parte superior podremos ver de nuevo las correlaciones
+#Y en la diagonal vemos la densidad de cada variable
+```
+
+Como podemos ver en la parte inferior izquierda tanto X1 como X2 parecen tener una relación lineal con Y, tal y como esperábamos por la primera tabla de correlaciones. Lo mas curioso en esto es ver la forma de la linea que se forma por que X1 crea una pendiente negativa con Y y X2 forma todo lo contrario, osea una pendiente positiva con Y. Siendo ambas pendientes muy parecidas y es que si vemos sus correlaciones nos daremos cuenta de que prácticamente tienen la misma correlación pero con signos distintos.
+
+Por lo tanto concluimos que hay relación lineal entre las variables regresoras y Y.
+
+### Generar modelo
+Para esto buscaríamos elegir las mejores variables regresoras pero ya que el problema nos pide que usemos ambas, iremos directamente a generar el modelo.
+```{r genmod}
+regresion<-lm(Y~X1+X2)
+summary(regresion)
+```
+
+Como podemos ver en el modelo, por la prueba F, la regresión es significante con un alpha 0.05, por lo tanto usaremos este modelo a pesar de que individualmente las significancias de las variables regresoras no sean muy altas ya que juntas modelan de manera significante al problema.
+
+También nos ayudara ver los intervalos de confianza de los predictores, lo cuales son llamados _Coeficientes parciales de regresión de los predictores_, esto en nuestro caso nos da mas seguridad por que vemos que el intervalo a un 95% no es muy grande.
+```{r genmod2}
+confint(regresion)
+```
+
+
+
+## Verificación de supuestos
+
+### 1 Normalidad en los errores
+
+Si hay una relación lineal entre los predictores y Y podemos decir que los errores se distribuyen normalmente en torno a 0 y con varianza constante, por lo que después de las pruebas hechas podemos esperar que nuestro modelo cumpla con esto.
+
+
+Para comprobar la normalidad utilizaremos una gráfica que compara los cuantiles muestrales con los cuantiles teóricos de una distribución normal, esto nos debería arrojar una linea recta y los puntos de los errores alrededor de ella.
+```{r sup_norm,echo=FALSE}
+qqnorm(regresion$residuals)
+qqline(regresion$residuals)
+```
+
+A pesar de algunos datos alejados de la linea recta, el gráfico parece indicar normalidad. Para asegurar esto utilizaremos un _shapiro.test_.
+```{r sup_norm2}
+shapiro.test(regresion$residuals)
+
+```
+
+Para esto nuestra hipótesis nula es que hay normalidad, y por el _p-value_ que tenemos vemos que no podemos rechazarla. Por lo tanto comprobamos la normalidad en los residuos.
+
+### 2 Homocedasticidad de varianzas
+
+Para ver esto de forma clara utilizaremos un gráfico en el que compararemos los residuos con los valores ajustados del modelo, estos se deben distribuir en torno a 0 de forma aleatoria por lo que esperamos no encontrarnos con ningún patrón.
+```{r vari1, echo=FALSE}
+ggplot(data = datos, aes(regresion$fitted.values, regresion$residuals)) +#aes(x,y)
+  geom_point() +#Coloca los puntos
+  geom_smooth(color = "darkblue", se = FALSE,method = 'loess',formula = y~x) +#grafica suave y azul
+  geom_hline(yintercept = 0) +#Coloca la linea del 0
+  theme_bw()#Temas para lo no dato
+```
+
+Y como vemos en el gráfico a pesar de un par de datos atípicos en general el resto aparenta una distribución aleatoria en torno a 0, por lo que podemos esperar una varianza constante. Pero para garantizar la varianza constante usaremos el _Breusch-Pagan-test_.
+```{r vari2}
+bptest(regresion)
+```
+
+Como la hipótesis nula es que hay homocedasticidad de varianzas y tenemos un _p-value_ mayor a 0.05 no podemos rechazar esa hipótesis, por lo que podemos decir que hay varianza constante en el modelo.
+
+### 3 No autocorrelacion de errores
+
+Para comprobar que los errores no están correlacionados usamos un _Durbin-Watson-test_.
+```{r correlacion1}
+dwtest(regresion,alternative = "two.sided")
+```
+
+Trabajamos bajo la hipótesis nula de que __no hay autocorrelacion__, por lo que dado el _p-value_ mayor a 0.05 no podemos rechazar la hipótesis nula, por lo tanto decimos que no hay autocorrelacion en los errores.
+
+### 4 Multicolinealidad
+
+No queremos que haya relación lineal entre las variables predictoras, por lo que hay que ver su correlación, como solo son dos variable predictoras podemos efectuar directamente un calculo de correlación.
+```{r corr}
+cor(X1,X2)
+```
+
+Y como vemos, hay una alta correlación entre los predictores, lo ideal seria dejar de utilizar alguno, en este caso ambos tienen prácticamente la misma relación lineal con Y por lo que aparentemente podríamos elegir cualquiera de los dos. Para hacer esto de forma mas segura podemos hacer uso de algún método para elegir los mejores predictores (como stepwise). Pero para el problema que tenemos esto no nos sera necesario ya que en los últimos ejercicios haremos algo parecido al comparar las regresiones de cada predictor de manera individual.
+
+
+## Resolución de problemas
+
+### Respuesta a ejercicio 1
+```{r respu1,echo=FALSE}
+regresion<-lm(Y~X1+X2)
+summary(regresion)
+```
+Los valores Estimados son para beta cero igual a 14, beta uno igual a -2 y beta tres igual a -0.5
+
+### Respuesta a ejercicio 2
+```{r resou2,echo=FALSE}
+anova <-aov(regresion)
+```
+ El valor del estadístico de prueba, F=13.657, es significativamente distinto de 1 para cualquier nivel de significancia, dado que como la teoría lo indica un valor F alejado de mayor a 1 indica significancia en la prueba.
+ 
+### Respuesta a ejercicio 3
+```{r respu3}
+t.test(X1,X2)
+```
+La regresión es estadísticamente significativa, porque el p-value es menor a 0.05, teniendo un p-value = 0.002826.
+
+### Respuesta a ejercicio 4
+```{r prueba3,echo=FALSE}
+summary(regresion)
+```
+Teniendo un coeficiente R-squares: 0.6421. Por lo que vemos que se explica un 64.21% de la variabilidad de Y.
+  
+### Respuesta a ejercicio 5
+```{r pruenat}
+mat_inv<-matrix(c(v1,v2,v3),ncol=3,nrow = 3)
+  #Para calcular las varianzas de b es necesario estimar la varianza del residuo
+  #la cual es el cuadrado medio de los residuales en la tabla anova
+  # y como el valor es MSres=8.5, multiplicamos este por la matriz inversa
+  # y nos dara una matriz de covarianzas
+cov_mat_b<-8.5*mat_inv
+cov_mat_b
+#en la que en la diagonal encontramos las respuestas
+```
+Por lo que para ser mas explícitos encontramos que:
+
+- $Var(\beta_{0})=37.1498$
+- $Var(\beta_{1})=1.4365$
+- $Var(\beta_{2})=0.2587$
+
+### Respuesta a ejercicio 6
+```{r prueba6}
+regresion2<-lm(Y~X1)
+summary(regresion2)
+anova2 <-aov(regresion2)
+```
+Se obtienen valores de:
+
+
+- beta cero = 9.1636 
+- beta uno = -1.0273
+
+
+El valor del estadístico de prueba, F=14.13, es significativamente distinto de 1 para cualquier nivel de significancia.
+
+### Respuesta a ejercicio 7
+```{r prueba7}
+regresion3<-lm(Y~X2)
+summary(regresion3)
+anova3 <-aov(regresion3)
+```
+Se obtienen valores de:
+
+
+- beta cero = 3.9455 
+- beta dos = 0.4727
+
+### Respuesta a ejercicio 8
+
+En conclusión vemos que X2 explica solo el 51.75% de la variabilidad de Y mientras que X2 explica el 56.77% de esa variabilidad que es un poco menos que la variabilidad que las juntas explican que es 61.1%, esto usando solo $R^{2}$que como sabemos aumenta siempre que se le agrega un regresor, pero si usamos a $R^{2}_{Adj}$, que solo aumenta si el regresor agregado reduce el cuadrado medio de la regresión; esto nos da que si le agregamos X2 al regresor X1 no se aumenta la capacidad de explicar la variabilidad. Ademas si revisamos algunos  valores mas como la significancia de la prueba(obtenido por el _p-value_) que para X1 es 0.0044 que denota mas significancia que el _p-value_ generado por la prueba de ambas variables y también de solo X2.
+
+Por lo tanto podemos estar seguros de que agregar X2 al modelo no lo ayuda en nada[@analisis_mont].
+
+\newpage
+
+# Bibliografía
+

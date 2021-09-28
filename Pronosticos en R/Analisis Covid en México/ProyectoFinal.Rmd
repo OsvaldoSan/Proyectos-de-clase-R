@@ -1,0 +1,1283 @@
+---
+title: "Metodología de Box-Jenkins aplicado a los casos nacionales de confirmados y defunciones por Codvid-19 en México"
+author: 
+- "Abdelrrague Manzanares Caleb Elihud"
+- "González Zequeida Helena"
+- "Ramírez Pedraza Ariadna Fernanda"
+- "Santos Soto Martín Osvaldo"
+header-includes:
+  - \usepackage[spanish]{babel}
+  - \renewcommand{\and}{\\}
+output:
+    pdf_document: 
+      extra_dependencies: "subfig"
+      keep_tex: yes
+      fig_caption: yes
+      number_sections: yes
+      toc: yes
+      latex_engine: xelatex
+date: " 26 de Junio del 2021"
+csl: apa.csl
+bibliography: Pronosticos.bib
+---
+
+\pagebreak
+
+\listoffigures
+\listoftables
+
+\pagebreak
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE, message = FALSE)
+
+library(tsoutliers) # tsclean
+library(outliers) # Grubbs
+library(car)
+library(descomponer)
+library(forecast)
+library(tseries) # adf
+library(nortest)# ad.test
+library(lmtest) # coeftest
+
+# Librerías para diseño general
+library(xtable)
+options(xtable.floating = TRUE)# Es true para que latex reconozca que es una tabla
+options(xtable.timestamp = "")
+
+
+```
+
+
+\pagebreak
+
+# Introducción      
+
+Actualmente estamos viviendo una de las crisis más importantes del siglo XXI causada por la pandemia de COVID-19 que afecta principalmente a adultos mayores y personas con comorbilidades. En Latinoamérica y en particular en México la pandemia ha tenido repercusiones no solo a niveles económicos sino también en costos de vidas humanas. Es de vital importancia la vigilancia intensa para controlar la propagación del virus; por esto, en este trabajo desarrollamos modelos de pronóstico con la metodología de Box-Jenkins que predigan el número esperado de casos de confirmados y defunciones por adelantado, y de esta manera los resultados ayuden a mantener y planificar eficazmente medidas de prevención y control.
+
+
+Para nuestro estudio contamos con dos series, una contabiliza los casos confirmados y otra las defunciones causadas por COVID-19, ambas recolectan los datos de forma diaria y son tomadas de [@noauthor_covid-19_nodate].
+
+
+Tomamos los datos de ambas series desde enero hasta mayo del 2021 para poder tener al menos siete días en los que podamos validar los resultados, pues no sabemos si el comportamiento de estas series que representan el avance de la pandemia en México será adecuado para el uso de la metodología de Box-Jenkins debido a el constante cambio en la situación de la pandemia por lo desconocido del virus y a la exigencia que tiene dicho método con las condiciones a cumplir por la serie para poder realizar pronósticos eficaces; el añadir una prueba de validación nos da más seguridad.
+
+
+Los análisis de series de tiempo relacionadas con cualquier epidemia se tienen que hacer con mucho cuidado pues se trata de vidas humanas, por tanto, en caso de encontrar adecuadas las series para dar un pronóstico eficiente se debe actualizar la serie para poder predecir nuevos días y verificar que el modelo siga siendo funcional con el paso del tiempo; en caso de no serlo optamos por correr nuevamente la línea de producción o **pipeline** para así generar un nuevo modelo actualizado.
+
+
+Al tratar dos series que, si bien son un reflejo del mismo fenómeno pueden tener un comportamiento sustancialmente distinto, su tratamiento en muchas partes del trabajo puede ser diferente e incluso alguna de ellas puede no cumplir con los requerimientos de la metodología a usar. Será interesante la comparación entre estas dos series por que como se dijo, son reflejos de un mismo fenómeno, y nos pueden dar información complementaria.
+
+\pagebreak
+
+# Objetivo
+
+Nuestro objetivo es mostrar que la metodología de Box-Jenkins es aplicable a las series de tiempo de casos confirmados y defunciones nacionales de COVID-19 para así poder entender un poco más este fenómeno; en caso de que los resultados sean significativamente buenos podremos utilizar los modelos generados para pronósticos reales.  
+
+\pagebreak
+
+# Marco conceptual
+
+Las series a tratar son reflejos de la pandemia de COVID-19 en México, una pandemia que azoto al mundo desde principios del 2020 y México ha sido uno de los tantos países que ha sufrido mucho por su causa. 
+
+La primera serie es sobre casos confirmados de la enfermedad, estos datos no son absolutos pues son solo los casos donde las personas implicadas tuvieron que pasar por una prueba de la enfermedad y esta arrojo que en efecto estaban contagiados, lo que podemos aprender de esta serie es el cambio gradual en la cantidad de personas contagiadas que ha obtenido la confirmación de su enfermedad, de esta forma a corto plazo(días) podemos ver por ejemplo si se espera que siga una tendencia en particular o si por el contrario se espera un cambio. 
+
+La segunda serie al ser una representación del mismo fenómeno nos reportara información similar, pues se trata de las defunciones que han sido confirmadas como defunciones por COVID-19, de la misma forma que en la anterior sabremos si los valores esperados para el futuro mantendrán la tendencia o cambiaran y así estar más informados. 
+
+Con la obtención de los pronósticos de ambas series podremos tener dos fuentes distintas en las cuales basarnos para saber por ejemplo si la pandemia ira en aumento en los días cercanos o no. Para este último efecto que es comparativo en los pronósticos que puedan ofrecer ambas series estamos de cierta forma suponiendo causalidad entre ellas, el hecho de que reporten datos de un mismo fenómeno y que haya correlación en sus datos nos hace pensarlo, pero al no confirmarlo en este estudio, pues no es su fin, no será algo que afirmemos y solo lo tomaremos como una posibilidad al hacer el análisis de sus resultados, puesto que en ciertos momentos de la serie no parece haber causalidad de una sobre la otra y esto ya puede deberse a factores externos que no estamos tomando en cuenta.
+
+
+\pagebreak
+
+# Marco teórico
+
+## Introducción a Series de Tiempo
+
+Una serie tiempo es una secuencia de observaciones, medidos en determinados momentos del tiempo, ordenados cronológicamente y, espaciados entre sí de manera uniforme, así los datos usualmente son dependientes entre sí. El principal objetivo de una serie de tiempo, donde es su análisis para hacer pronóstico [@villavicencio2010introduccion].
+
+## Estabilización de la varianza y de la tendencia
+
+El comportamiento de una serie de tiempo depende de la distribución de probabilidad que gobierna el mecanismo de generación de datos o proceso estocástico que la produce. Dichas características pueden cambiar o no en el tiempo. Si cambian en el tiempo será mucho más difícil modelar y más riesgoso hacer inferencias y predicciones. Pero si no cambian, condición que se conoce como estacionariedad, será más fácil modelar y hacer predicciones[@montenegro_garcia_analisis_2011].
+
+Una serie de tiempo necesita cumplir el supuesto de estacionariedad, lo que significa que la media y la varianza son constantes en el tiempo.
+Los pasos a seguir para confirmar estacionariedad son los siguientes:
+
+- Confirmar varianza constante con el test de Levene.
+- Confirmar media constante con el test de Dickey-Fuller aumentado
+
+En caso de que la varianza no fuera constante, confirmado con la prueba de Levene. Debemos encontrar una $\lambda$ optima como se recomienda en [@guerrero_guzman_alisis_2003], para realizar una transformación de potencia a la serie con la $\lambda$ obtenida. Se debe de corroborar la estabilización de la serie nuevamente con un test de Levene.
+
+En caso de que la media no fuera constante, confirmado con una prueba de Dickey-Fuller aumentado (ADF) que nos dice si existen raíces unitarias. Debemos diferenciar la serie, nos apoyamos en la varianza de la serie para ver si diferenciarla es apropiado puesto que sabemos que si nos excedemos en las diferencias la varianza comenzará a crecer. También es difícil encontrar series con mas de dos diferencias.
+
+## ACF y PACF
+
+La función de autocorrelacion (ACF) mide la correlación entre dos variables separadas por k periodos. La ACF en la practica nos ayuda a identificar series de tiempo estacionarias, cuando sus barras significativas decrecen rápidamente, es decir tiene un máximo de cuatro barras significativas, también la podemos usar después de diferenciar la serie y verificar que sea estacionaria, pero en ese caso lo mejor seria utilizar un ADF.
+La ACF también nos ayuda a identificar modelos de la metodología de Box-Jenkins en tanto si decrece rápidamente (signo de estacionariedad) o si se trunca en una o dos barras significativas.
+
+La función autocorrelación parcial mide la correlación entre dos variables separadas por k periodos cuando no se considera la dependencia atribuible a variables intermedias. La PACF también nos ayuda a identificar modelos de la metodología de Box-Jenkins en tanto si se trunca en una o dos barras significativas.
+
+![ACF y PACF](ACF_PACF.png){width=60%}
+
+\pagebreak
+
+## MA(q)
+
+Los modelos de medias móviles expresa la serie $X_t$ en función del presente y pasado de una serie de ruido blanco $\epsilon_t$ con media cero y varianza finifita [@montenegro_garcia_analisis_2011].
+El modelo de medias móviles de orden q, MA(q) tiene la siguiente forma algebraica:
+$$ y_t = \mu + \epsilon_t - \theta_1 \epsilon_{t-1} - \theta_2 \epsilon_{t-2} - ... - \theta_q \epsilon_{t-q} $$
+
+Ejemplificando un modelo MA(1) lo podemos representar como :
+$$ y_t = \mu + \epsilon_t - \theta_1 \epsilon_{t-1}  $$
+
+La ACF resulta de gran utilidad especificar el orden de un modelo de medias móviles, porque encontramos q barras significativas. El MA(q) siempre va a ser estacionario puesto que se compone de una suma finita de variables aleatorias con varianza finita [@montenegro_garcia_analisis_2011].
+Los procesos MA(q) deben de ser invertibles.
+
+## AR(p)
+
+El modelo autoregresivo expresa el valor actual de una serie estacionaria $X_t$ en función de su propio pasado o sea de sus rezagos $X_{t-1},  ..., X_{t-p}$ [@montenegro_garcia_analisis_2011]. Un autoregresivo AR(p) tiene la siguiente forma algebraica:
+$$ y_t = \phi_1 y_{t-1} + \phi_2 y_{t-2} + ... + \phi_p y_{t-p} + \delta + \epsilon_t $$
+
+También podemos explicar la relación entre $\mu$ y $\delta$ como :
+$$ \mu = \frac{\delta}{ 1 - \phi_1 - \phi_2 - ... - \phi_p} $$
+
+Ejemplificando un modelo AR(1) lo podemos representar como :
+$$ y_t = \phi_1 y_{t-1} + \delta + \epsilon_t $$
+y a su media como:
+$$ \mu = \frac{\delta}{ 1 - \phi_1 } $$
+
+La PACF resulta de gran utilidad especificar el orden de un modelo de medias móviles, porque encontramos p barras significativas. Los procesos AR(p) deben de ser estacionarios.
+
+## ARMA(p, q)
+
+De manera que podemos utilizar los modelos AR(p) y MA(q) como aproximaciones. También podemos utilizar la combinación de ambos modelos y originar modelos mezclados autoregresivos de medias móviles ARMA(p,q), con el cual usualmente se obtiene mayor parsimonia, esto es, emplear un menor número de términos comparado con el AR o el MA individualmente [@montenegro_garcia_analisis_2011]. La expresión del ARMA(p, q) será:
+$$ y_t = \phi_1 y_{t-1} + ... + \phi_p y_{t-p} + \delta + \epsilon_t - \theta_1 \epsilon_{t-1} - ... - \theta_q \epsilon_{t-q} $$
+
+Los modelos ARMA tienen condiciones de invertibilidad para la parte MA y de estacionariedad para la parte AR.
+
+## ARIMA(p, d, q)
+
+Si la serie fue estabilizada la tendencia, es posible trabajar con la serie original pero tendría la especificación ARIMA(p,d,q). A esta clase de modelos se les denomina autoregresivos e integrados de medias móviles. El término “integrado” se refiere a que la serie original $y_t$ se obtendría después de d diferencias realizadas.
+La expresión del ARIMA(p, d, q) será, con $w_t = \nabla^d y_t$ :
+
+$$ w_t = \phi_1 w_{t-1} + ... + \phi_p w_{t-p} + \delta + \epsilon_t - \theta_1 \epsilon_{t-1} - ... - \theta_q \epsilon_{t-q} $$
+
+## ARIMA(p, d, q)(P, D, Q)s
+
+Cuando una serie de tiempo en estudio tiene intervalos de observación menores a un año, entonces esfrecuente que estas tengan variaciones ó patrones sistemáticos cada cierto periodo, estas variaciones sistemáticas inferiores a un año por ejemplo semestral, mensual, diario, etc [@villavicencio2010introduccion]. Deben ser captadas en los llamados Factores Estacionales, dentro de la estructura del modelo a construirse. Este tipo de procesos tiene las siguientes características:
+
+- Contiene una componente que modela la dependencia regular, que es la dependencia asociada a observaciones consecutivas.
+- Contiene una componente que modela la dependencia estacional, que está asociada a observaciones separadas por periodos. 
+
+Las diferencias regulares y diferencias estacionales para transformar en series estacionarias, se representan como $\nabla^D_s \nabla^d y_t$. La estructura general de un modelo $ARIMA(p, d, q)(P, D, Q)_s$ es:
+
+$$ y_t = \phi_1 y_{t-1} + ... + \phi_p y_{t-p} + \Phi_1 y_{t-s} + ... + \Phi_p y_{t-ps} + \delta + \epsilon_t - \theta_1 \epsilon_{t-1} - ... - \theta_q \epsilon_{t-q} - \Theta_1 \epsilon_{t-s} - ... - \Theta_q \epsilon_{t-qs} $$ [@villavicencio2010introduccion]
+
+\pagebreak
+
+## Pronósticos 
+
+El cálculo del pronóstico $\hat{y}_t(h)$ se puede hacer recursivamente utilizando el modelo ARIMA estimado: se calcula el pronóstico de primer periodo, que sirve de base para obtener el segundo y así sucesivamente hasta llegar al h−ésimo periodo.
+
+Sea $w_t = \nabla^d y_t$ una serie estacionaria:
+
+$$ w_t = \phi_1 w_{t-1} + ... + \phi_p w_{t-p} + \delta + \epsilon_t - \theta_1 \epsilon_{t-1} - ... - \theta_q \epsilon_{t-q} $$
+
+El ultimo periodo conocido: 
+$$ w_T = \phi_1 w_{T-1} + ... + \phi_p w_{T-p} + \delta + \epsilon_T - \theta_1 \epsilon_{T-1} - ... - \theta_q \epsilon_{T-q} $$
+
+El pronostico del primer periodo $\hat{w}_T(1)$ esta dada por:
+$$ \hat{w}_T(1) = \phi_1 w_{T} + ... + \phi_p w_{T-p+1} + \delta + \hat{\epsilon_T} - \theta_1 \hat{\epsilon}_{T} - ... - \theta_q \hat{\epsilon}_{T-q+1} $$
+Entonces se sigue para $\hat{w}_T(2)$ y para $\hat{w}_T(h)$
+$$ \hat{w}_T(2) = \phi_1 \hat{w}_{T}(1) + ... + \phi_p w_{T-p+2} + \delta - \theta_2 \hat{\epsilon}_{T} - ... - \theta_q \hat{\epsilon}_{T-q+2} $$
+$$\vdots$$
+
+$$ \hat{w}_T(h) = \phi_1 \hat{w}_{T}(h-1) + ... + \phi_{h-1} \hat{w}_{T}(1) + \phi_{h} \hat{w}_{T} + ... + \phi_p w_{T-p+h} + \delta - \theta_h \hat{\epsilon}_{T} - ... - \theta_q \hat{\epsilon}_{T-q+h}  $$
+
+
+Una vez realizado el pronóstico para la serie diferenciada $w_t$, se debe de obtener el que corresponde a la serie original $y_t$, sumando los valores correspondientes.
+
+
+
+\pagebreak
+
+
+# Análisis descriptivo
+
+La primera serie de la que hablaremos es la de casos confirmados en el periodo enero-mayo del 2021 la cual se puede ver
+en el cuadro \ref{tab:lectura_datos_confirmados} y podemos ver su gráfica en la figura \ref{fig:lectura_datos_confirmados}. En ellos podemos ver el pico que sabemos se produjo en enero y su decrecimiento paulatino, además en primera instancia observamos cierta estacionalidad decreciente pues se ve en la figura \ref{fig:lectura_datos_confirmados} como el patrón se mantiene con el paso de los días. Podemos ver también que en los últimos treinta días los valores se han mantenido estables de cierta forma, lo cual no había ocurrido a lo largo de la serie en cuestión. Esta estacionalidad puede deberse tanto al comportamiento humano o bien a la forma de recopilar los datos, ya que existe cierto retraso en la recolección de datos de algunos puntos del país.
+
+
+```{r lectura_datos_confirmados,results='asis',fig.cap="\\label{fig:lectura_datos_confirmados} Casos confirmados COVID-19",echo=FALSE}
+datos <- read.csv("Datos/Confirmados.csv")
+confirmados = ts(data = datos$Nacional[368:517])
+# Marzo- mayo 91 datos: 427:517
+# Enero - Mayo 150 datos 368:517
+# Febrero - Mayo 399:517
+# octubre - Mayo  276:517
+tabla_confirmados<-data.frame(datos$nombre[368:417],datos$Nacional[368:417],datos$nombre[418:(418+49)],datos$Nacional[418:(418+49)],datos$nombre[469:(469+49)],datos$Nacional[469:(469+49)])
+colnames(tabla_confirmados)<-c('Fecha','Confirmados','Fecha','Confirmados','Fecha','Confirmados')
+
+print(xtable(tabla_confirmados, digits = 0,caption = "\\label{tab:lectura_datos_confirmados} Casos confirmados Enero-Mayo"),comment = FALSE )
+
+plot(confirmados,col='royalblue4',xlab='Días transcurridos',ylab='Casos confirmados',main='Casos confirmados Enero-Mayo')
+```
+
+A diferencia de lo que pensábamos, el comportamiento de la serie de defunciones es diferente en varios sentidos al de confirmados, a pesar de que sigue la misma tendencia, es decir, un gran pico en enero pero un decrecimiento para los últimos meses. El cambio más significativo que podemos notar es que no hay una estacionalidad marcada en defunciones, esto podría deberse a que las defunciones son menores a los confirmados y por ende se nota poco la estacionalidad, si es que la hay, o posiblemente a otros factores que no contemplamos. Y también podemos notar que en las dos gráficas ya mencionadas no hay variabilidad constante, debido a que muestran datos muy elevados y datos muy pequeños en intervalos grandes de las gráficas. 
+
+
+
+```{r lectura_datos_defunciones,results='asis',fig.cap="\\label{fig:lectura_datos_defunciones} Defunciones por COVID-19", echo=FALSE}
+datos1 <- read.csv("Datos/Defunciones.csv")
+defunciones = ts(data = datos1$Nacional[348:497]) 
+# 91 datos 390:480
+# Enero - Mayo 150 datos 348:497
+tabla_defunciones<-data.frame(datos1$nombre[348:397],datos1$Nacional[348:397],datos1$nombre[398:447],datos1$Nacional[398:447],datos1$nombre[448:497],datos1$Nacional[448:497])
+colnames(tabla_defunciones)<-c('Fecha','Defunciones','Fecha','Defunciones','Fecha','Defunciones')
+
+print(xtable(tabla_defunciones, digits = 0,caption = "\\label{tab:lectura_datos_defunciones} Defunciones Enero-Mayo"),comment = FALSE )
+
+plot(defunciones,col='royalblue4',xlab='Días transcurridos',ylab='Defunciones',main='Defunciones Enero-Mayo')
+
+```
+
+\clearpage
+
+# Tratamiento de datos atípicos
+
+Ahora vamos a analizar las series para ver si hay datos atípicos; la serie de defunciones no muestra datos atípicos ni en el diagrama de caja-bigote que se puede observar en la figura \ref{fig:Grubbs_defunciones} ni en el test de Grubbs que vemos abajo por lo cual no hay mucho más que decir. Además podemos observar que la mayor cantidad de datos respecto a las muertes diarias se encuentran aproximadamente entre las doscientos y mil muertes, así como en la gráfica \ref{fig:lectura_datos_defunciones} de los datos de defunciones y en su respectivo diagrama de caja bigote de la figura \ref{fig:Grubbs_defunciones}, se confirma la existencia de datos elevados pertenecientes a enero.
+
+```{r Grubbs_defunciones,fig.cap="\\label{fig:Grubbs_defunciones} Diagrama de caja-bigote para defunciones",echo=FALSE}
+grubbs.test(defunciones)
+boxplot(defunciones,ylab='Defunciones',col='mediumaquamarine')
+```
+
+
+Pero en el caso de la serie de confirmados su comportamiento es más extraño pues como vemos abajo el test de Grubbs dice que no hay datos atípicos, pero si vemos su diagrama de caja-bigote que se encuentra en la figura \ref{fig:Grubbs_confirmados} notamos
+que si hay datos que pueden considerarse atípicos pues están más allá del máximo valor permitido por el rango de 1.5IQ(intercuartil), y de hecho son bastantes los datos que se encuentran en esa situación por lo que decidimos aplicar otras pruebas que dieron el mismo resultado de que no hay datos atípicos, así como intentar una limpieza con *tsclean* que usa una descomposición STL para estimar los datos atípicos a reemplazar pero solo cambia dos datos y no hace un cambio importante así que decidimos seguir con la serie original[@hyndman__aut_forecast_2021]. Cuando revisamos las fechas nos damos cuenta de que todos los datos que marca como atípicos son de enero, lo cual tiene sentido por que como sabemos en invierno hubo una explosión de casos, esto nos llevó a pensar en tomar solo cuatro meses y no cinco pero los pronósticos eran menos certeros y es posiblemente porque disminuíamos notablemente los datos y Box-Jenkins requiere muchos datos.
+
+Algo extraño es que la serie de defunciones no muestra datos atípicos ni siquiera en enero, por lo que podemos intuir que el conocimiento de la pandemia en el último año ayudo a los hospitales a salvar más vidas aunque puede haber otros factores involucrados que desconocemos.
+
+```{r Grubbs_confirmados,fig.cap="\\label{fig:Grubbs_confirmados} Diagrama Caja-Bigote para casos confirmados",echo=FALSE}
+grubbs.test(confirmados)
+boxplot(confirmados,ylab='Defunciones',col='skyblue1')
+```
+
+
+\pagebreak
+
+# Desarrollo con la metodología de Box-Jenkins
+
+
+## Correlogramas de las series originales
+
+
+Debido a que en la ACF que se ve en la parte (a) de la figura \ref{fig:ACF1_confirmidos} se observa un decrecimiento lento nos lleva a pensar que la serie de casos confirmados no es estacionaria, por lo que se realizará la verificación de la estacionariedad de la serie, en caso de no haber estacionariedad se realizarán las transformaciones necesarias para trabajar según la metodología de Box-Jenkins.
+
+En el correlograma correspondiente a la PACF que se ve en la parte (b) de la figura \ref{fig:ACF1_confirmidos} podemos observar que después de los diez días no existe una relación significativa con el pasado, mientras que la ACF muestra una relación significativa con el pasado aún después de cincuenta días. Lo cual nos indica que esta relación alta en la ACF se debe a la intervención de otras variables y no tanto a que una variable este altamente relacionada con su pasado a 50 días de distancia. Con lo visto en los correlogramas se empieza a confirmar nuestra sospecha de estacionalidad y de hecho estacionalidad semanal, ya que cada siete retrasos parece haber valores anormalmente altos, especialmente en el correlograma de la ACF.
+
+```{r ACF1_confirmidos,out.width='45%', fig.cap="Correlogramas de casos confirmados",fig.subcap=c("Autocorrelación","Autocorrelación Parcial"), echo=FALSE}
+acf(confirmados,lag.max=150,xlab="Retraso", main="Correlograma de casos confirmados COVID-19") 
+pacf(confirmados,lag.max=150,xlab="Retraso", main="Correlograma de casos confirmados COVID-19") 
+```
+
+
+En el caso de la serie de defunciones, podemos ver en el correlograma de la ACF que podemos ver en la parte (a) de la figura \ref{fig:ACF2_defunciones} que la serie no tiene un comportamiento estacionario porque tiene más de cien barras significativas; llevaremos a cabo el ajuste necesario para poder llevar a cabo la metodología de Box-Jenkins.
+
+Cuando analizamos la gráfica de la serie pensamos que no había estacionalidad pero curiosamente, viendo el correlograma de la PACF en la parte (b) de la figura \ref{fig:ACF2_defunciones} podemos sospechar de estacionalidad de orden siete debido a la barra significativa que se muestra en el retraso ocho y dado que es una serie diaria, la estacionalidad sería semanal.
+
+
+```{r ACF2_defunciones,out.width='45%', fig.cap="Correlogramas de Defunciones",fig.subcap=c("Autocorrelación","Autucorrelación Parcial"), echo=FALSE}
+acf(defunciones,lag.max=150,xlab="Retraso", main="Correlogramas de Defunciones COVID-19")
+pacf(defunciones,lag.max=150,xlab="Retraso", main="Correlogramas de Defunciones COVID-19") 
+```
+
+
+## Estabilización de Varianza 
+
+
+Teniendo indicios de no estacionariedad, realizaremos la prueba de Levene para comprobar homogeneidad de varianza pues la heterocedasticidad es una de las causantes de esta. Para llevar esto a cabo separaremos la serie en grupos siguiendo lo que recomienda el procedimiento de Guerrero que se ve en [@guerrero_guzman_alisis_2003], proponiendo una $H = 15$, lo que nos da una $R = 10$; es decir, separamos la serie en quince grupos de tamaño diez.
+
+```{r varianza_confirmados, echo=TRUE}
+grupos_serie<-function(Hoja.ts,R){
+  N=length(Hoja.ts)
+  Grupo <-c()
+  ini=1
+  ultimo=tail(seq(R,N,by=R),n=1)
+  grupo<-'I'
+  for (i in seq(R,N,by=R) ){
+    Grupo[(i-R+1):i]<-grupo   
+    grupo<-paste(grupo,'I',sep='')
+  }
+  valor<-as.numeric(Hoja.ts[1:ultimo])
+  New_Hoja<-data.frame(valor,Grupo)
+  New_Hoja
+}
+
+R=10
+Hoja_g<-grupos_serie(confirmados,R)
+print("Prueba de Levene para serie de casos confirmados")
+leveneTest(Hoja_g$valor,group = Hoja_g$Grupo)
+```
+ 
+
+```{r varianza_defunciones, echo=FALSE}
+# Siguiendo el procedimiento de guerrero
+# Sea N=435,  se propone H=29, entonces dejamos fuera a n=0 y R=( (N-n)/H ) = 15 por lo tanto n<R 
+# SerÃ¡n asÃ­ 11 grupos de tamaÃ±o 10
+ 
+# Funciones para calcular varianza en serie de tiempo
+R=10
+Hoja_g<-grupos_serie(defunciones,R)
+
+# HipÃ³tesis nula: Las varianzas son iguales(Homogeneas)
+# Si el p-value es menor a la significacia se rechaza la hipÃ³tesis nula
+print("Prueba de Levene para serie de defunciones")
+leveneTest(Hoja_g$valor,group = Hoja_g$Grupo)
+
+```
+
+
+Obtenemos un p-value menor a 0.05 en ambas series, indicándonos que hay pruebas suficientes para rechazar la hipótesis nula de homogeneidad de varianzas. Por tanto, llevaremos a cabo el método de Guerrero para encontrar la mejor **lambda** y así hacer los ajustes correspondientes utilizando una transformación de potencias.
+
+Para esto utilizaremos la función BoxCox de R, la cual nos permite utilizar el método de Guerrero para obtener el valor de **lambda** [@hyndman__aut_forecast_2021].
+
+```{r lambda_confirmados,echo=TRUE}
+
+lc = BoxCox.lambda(confirmados, method = "guerrero")
+ld = BoxCox.lambda(defunciones, method = "guerrero")
+```
+
+
+\begin{equation} \label{eq:lambdasEstabiliza}
+\begin{split}
+  \text{Para la serie de casos confirmados } \lambda &= `r lc`\\
+  \text{Para la serie de defunciones }\lambda &= `r ld`
+\end{split}  
+\end{equation}
+
+Procedemos a realizar la transformación de potencias a las series correspondientes con sus respectivas lambdas y verificamos que verdaderamente la varianza haya sido estabilizada con la prueba de Levene; como podemos ver en la parte de abajo obtenemos un p-value mayor a 0.05 en ambas series, por lo que no rechazamos la hipótesis nula de homogeneidad de varianzas y podemos decir que hay homocedasticidad.
+
+
+```{r estabilizarSerie,out.width='45%', fig.cap="Series estabilizadas",fig.subcap=c("Casos confirmados","Defunciones"), echo=FALSE}
+print("Prueba de Levene para serie de casos confirmados estabilizda")
+confirmados_e <-confirmados^( lc)
+
+R=10
+Hoja_g<-grupos_serie(confirmados_e,R)
+leveneTest(Hoja_g$valor,group = Hoja_g$Grupo)
+
+print("Prueba de Levene para serie de defunciones estabilizada")
+defunciones_e <- defunciones^(ld)
+
+Hoja_g<-grupos_serie(defunciones_e,R)
+leveneTest(Hoja_g$valor,group = Hoja_g$Grupo)
+
+plot.ts(confirmados_e,xlab="Días",ylab="Casos confirmados", main="Serie estabilizada de casos confirmados",col='royalblue4')
+plot.ts(defunciones_e,xlab="Días",ylab="Defunciones", main="Serie estabilizada de defunciones",col='royalblue4')
+```
+
+En la parte (a) de la figura \ref{fig:estabilizarSerie} podemos observar la estabilización de la serie de casos confirmados, debido a que la escala de la misma ha reducido considerablemente; además observamos que la tendencia paso de ser descendiente a creciente debido a que exponenciamos la serie con una lambda negativa. 
+
+A diferencia del ajuste realizado a la serie de casos confirmados, en la parte (b) de la figura \ref{fig:estabilizarSerie} la tendencia de la serie ajustada de defunciones continua siendo decreciente debido a que potenciamos a una lambda positiva y podemos ver la estabilización de la varianza con la reducción en la escala de la gráfica.
+
+## Estabilización de la Tendencia
+
+
+Otra causa de no estacionariedad es la media no constante, por lo que procedemos a confirmarla con una prueba de Dickey-Fuller aumentada que nos dirá si existen raíces unitarias y por ende la media no será constante. Como vemos abajo la prueba dice que ya es estacionaria la serie, pero al
+ver sus correlogramas en la figura \ref{fig:tendenciaCOrrelogramas1} notamos que aún no podemos
+decir que es estacionaria y nos apoyamos en la varianza de la serie para ver si diferenciarla es apropiado puesto que sabemos que si nos excedemos en las diferencias la varianza comenzará a crecer. Los resultados obtenidos son que la varianza con una diferencia disminuye, pero con dos ya no disminuye; los resultados del cálculo de la varianza se pueden ver en la ecuación \ref{eq:varianzasConf}, en el cual consideramos a la variable $Y_{t}$ como la serie de casos confirmados. La prueba de Dickey-Fuller nos confirma que la serie con un grado de homogeneidad de uno es estacionaria.
+
+```{r primeraSegconfirmados,echo=FALSE}
+print("Prueba de Dickey-Fuller aumentada para serie de casos confirmados estabilizada")
+adf.test(confirmados_e)
+```
+
+
+\begin{equation} \label{eq:varianzasConf}
+  \begin{split}
+  Sea\ Y_{t}^{\lambda} &=Z_{t} \\
+  Var(Z_{t}) &= `r var(confirmados_e)`  \\
+  Var(\nabla^{1} Z_{t}) &=`r var(diff(confirmados_e))`  \\
+  Var(\nabla^{2} Z_{t}) &=`r var(diff(diff(confirmados_e)))`
+  \end{split}
+\end{equation}
+
+
+```{r tendenciaCOrrelogramas1,out.width='45%',fig.cap="\\label{fig:tendenciaCOrrelogramas1} Correlogramas para serie de casos confirmados estabilizada",fig.subcap=c("ACF","PACF"),echo=FALSE}
+acf(confirmados_e,lag.max =40,xlab='Retraso',main="Correlograma de serie de casos confirmados")
+pacf(confirmados_e,lag.max =40,xlab='Retraso',main="Correlograma de serie de casos confirmados")
+```
+
+
+```{r segundaConfirmados,echo=FALSE}
+print("Prueba de Dickey-Fuller aumentada para serie de casos confirmados estabilizada y diferenciada")
+confirmados_e_d<-diff(confirmados_e)
+adf.test(confirmados_e_d)
+```
+
+
+Para el caso de la serie de defunciones notamos que en la prueba de Dickey-Fuller aumentada
+no es estacionaria en media puesto que no se rechaza la hipótesis nula de existencia de
+raíces unitarias, por lo que realizamos una primera diferencia y vemos nuevamente en la prueba de Dickey-Fuller aumentada que la serie ya es estacionaria, esto lo podemos corroborar
+al ver el correlograma de su ACF en la parte (a) de la figura \ref{fig:priemradifffunciones} que tiene un decrecimiento muy rápido y por ello no necesitamos más pruebas.
+
+
+```{r priemradifffunciones,out.width='45%',fig.cap="\\label{fig:priemradifffunciones} Correlogramas de serie de defunciones estabilizada y diferenciada",fig.subcap=c("ACF","PACF"),echo=FALSE}
+print("Prueba de Dickey-Fuller Aumentada para serie de defunciones estabilizada")
+adf.test(defunciones_e)
+defunciones_e_d<-diff(defunciones_e)
+print("Prueba de Dickey-Fuller Aumentada para serie de defunciones estabilizada y diferenciada")
+adf.test(defunciones_e_d)
+acf(defunciones_e_d,xlab="Retraso",main="Correlograma de ACF para serie de defunciones")
+pacf(defunciones_e_d,xlab="Retraso",main="Correlograma de PACF para serie de defunciones")
+```
+
+\pagebreak
+
+## Modelos parte regular
+
+### Confirmados 
+
+
+Ya estamos en posición de proponer modelos para la parte regular de las series y en este caso empezaremos por la de casos confirmados. Lo primero que notamos en el correlograma de la ACF de la serie de casos confirmados que se observa en la parte (a) de la figura \ref{fig:ACF_PACF_ydif} es que la parte regular es casi inexistente por que el valor de la primera barra está por debajo de los intervalos de confianza y reporta un valor de autocorrelación de $-0.1399$, mientras que las barras que si pasan los límites de confianza son la 2,5 y 7, en la última hay un claro indicio de estacionalidad pues existen barras significativas en los rezagos 14 y 21; con las barras 2 y 5 la situación es un poco más extraña pues nos hacen pensar en estacionalidad pero tampoco hay una repetición constante de barras significativas cada 2 o 5 rezagos, lo que podríamos notar es que cada 3 y luego 4 periodos hay barras significativas en ese orden por lo que pensaríamos en que hay estacionalidad ahí pero no vemos claro el patrón, además dentro del contexto de la serie de tiempo no tiene mucho sentido pensar en una estacionalidad de dos, tres o cuatro días, lo único que se nos ocurre para las causas de dicha estacionalidad es la forma de recolectar los datos y el tiempo que tardan en llegar. Antes de hablar de los modelos que proponemos hay que notar que el correlograma de la PACF que se ve en la parte (b) de la figura \ref{fig:ACF_PACF_ydif} le sucede algo similar pues pareciera que no hay parte regular por que la primera barra no alcanza los límites de confianza y tiene el mismo valor que en la ACF y las barras correspondientes a los retrasos que en la ACF nos hacen pensar en estacionalidad en está también son significativos, la única barra que sería significativa en la PACF y no en la ACF es la sexta, pero es consistente con que podría deberse a una estacionalidad de 3 o bien a que la estacionalidad de 7 se esconda ahí.
+
+Con todo esto tomamos el riesgo de proponer modelos con parte regular, pero también propondremos modelos que no tengan parte regular y analizaremos cómo se comportan. En primera instancia pensamos en un modelo de medias móviles de orden uno, y uno autorregresivo del mismo orden pues como vimos en caso de existencia de parte regular tendríamos valores significativos tanto en la ACF como en la PACF en el primer rezago; el otro modelo en el que pensamos es uno mezclado con parte de medias móviles y autorregresivo de orden uno en ambos puesto que el primer valor significativo en ambas funciones de autocorrelación, abusando un poco, podemos decir que es notoriamente más grande que el resto de valores que corresponden a la parte regular.
+
+
+
+```{r ACF_PACF_ydif,out.width='45%',fig.cap="\\label{fig:ACF_PACF_ydif} Correlogramas de serie de casos confirmados tranformada",fig.subcap=c("ACF","PACF"), echo=FALSE}
+acf(confirmados_e_d,xlab='Retraso',main="Correlograma de serie de casos confirmados")
+pacf(confirmados_e_d,xlab='Retraso',main="Correlograma de serie de casos confirmados") 
+```
+
+
+
+
+### Defunciones
+
+
+Siguiendo con la serie de defunciones; en el correlograma de la ACF que podemos ver en la parte (a) de la figura \ref{fig:ACF_PACF_defun} notamos que la parte regular se trunca en la primera barra, signos de estacionariedad también vemos indicios de la existencia de estacionalidad cada 7 rezagos, además de que podemos notar estacionariedad en la parte estacional ya que hay un decrecimiento rápido pues se trunca e la primera barra significativa.
+
+Analizando el correlograma de la PACF que se encuentra en la parte (b) de la figura \ref{fig:ACF_PACF_defun} podemos decir que
+unicamente hay una barra significativa en la parte regular y notamos otras barras significativas en los retrasos 7, 8 y 9 correspondientes a la parte estacional de la serie consistente a lo que creemos de la periodicidad de esta.
+
+Tomando en cuenta el comportamiento de los correlogramas proponemos el modelo de medias móviles de orden uno debido a que en el correlograma de la ACF, las barras significativas se truncan en un rezago y el correlograma de la PACF decrece asi como el modelo autorregresivo de orden uno, pues podemos decir que el correlograma de la ACF decrece rápidamente y el correlograma de la PACF se trunca en la primera barra significativa y el modelo mezclado con parte autorregresiva y de medias móviles, ambas de orden uno, debido a que la primera barra significativa de la parte regular en ambos correlogramas es mayor a comparación de las demás barras que ni siquiera son significativas. 
+
+```{r ACF_PACF_defun,out.width='45%',fig.cap="\\label{fig:ACF_PACF_defun} Correlogramas de serie de defunciones transformada",fig.subcap=c("ACF","PACF"), echo=FALSE}
+acf(defunciones_e_d,xlab='Retraso',main="Correlograma de serie de defunciones")
+pacf(defunciones_e_d,xlab='Retraso',main="Correlograma de serie de defunciones")
+```
+
+Cuando comenzamos con el análisis de las series, a primera vista observamos que el comportamiento de ambas era similar pero mientras realizábamos los tratamientos necesarios a cada una de las series no pensamos que llegaríamos a proponer casi los mismos modelos y del mismo orden para ambas debido a que el comportamiento que tienen es suficientemente distinto como para pensarlo.
+
+Algo interesante de notar es que a diferencia del correlograma de la ACF de la serie de defunciones, el de la serie de casos confirmados es difícil de analizar debido a que las barras significativas no corresponden a la parte regular y la única barra que consideramos significativa en la parte regular no pasa los límites de confianza, pensamos que esto podría deberse a los potenciales datos atípicos existentes en la serie de casos confirmados contrario a lo que pasa en la serie de defunciones.
+
+## Análisis de la estacionalidad
+
+### Serie de casos confirmados
+
+
+Continuamos con el análisis de la parte estacional en ambas series; comenzando con la serie de casos confirmados, en la cual existían indicios de estacionalidad en el rezago 7 como se observa en la figura \ref{fig:ACF_PACF_ydif}, por lo que realizaremos el periodograma para confirmar la estacionalidad. El cual realizaremos con la función de R perteneciente a la librería a **descomponer**, la cual es mantenida por Francisco Parra, quien es el autor recomendado en el curso de Pronósticos para el análisis de periodicidad [@parra_descomponer_2018]. El cual se puede observar en la figura \ref{fig:periodogramaConfirmados}, donde observamos que las frecuencias más altas son las que están cerca de los índices 20, 40 y 60. Revisando los valores del periodograma encontramos que el periodo asociado a la frecuencia del índice 21 es el periodo 7, lo cual ya habíamos intuido en los correlogramas, además de observar una estacionalidad no estacionaria por lo que más adelante se tratará para que sea estacionaria.
+
+Por otra parte, las otras dos frecuencias altas que mencionamos están asociadas a los periodos 2 y 3, como ya se había comentado anteriormente no se encuentra una relación clara entre la estacionalidad de 2 y 3 períodos con el contexto de los casos confirmados de COVID-19.
+
+
+```{r periodogramaConfirmados,fig.cap="\\label{fig:periodogramaConfirmados}Periodograma casos confirmados",echo=FALSE}
+gperiodograma(confirmados_e_d)
+```
+
+Como mencionamos anteriormente, la serie de casos confirmados tiene estacionalidad no estacionaria cada siete rezagos, para solucionarlo realizaremos diferencias en la parte estacional. Una vez realizada la diferencia estacional, analizamos el correlograma de la ACF en la parte (a) de la figura \ref{fig:modelosConfirmadosdif} donde podemos ver que la parte estacional de la serie ya es estacionaria debido a que se trunca en una barra significativa, de la misma manera, podemos notar que el correlograma de la PACF en la parte (b) de la figura \ref{fig:modelosConfirmadosdif} se trunca en su primera barra, por lo que podemos proceder a proponer modelos en la parte estacional.
+
+Debido a que ambos correlogramas se truncan en su primera barra significativa proponemos un modelo de medias móviles de orden uno y un modelo autorregresivo del mismo orden.
+
+
+```{r modelosConfirmadosdif,out.width='45%',fig.cap="\\label{fig:modelosConfirmadosdif} Correlogramas de la parte estacional de la serie de casos confirmados",fig.subcap=c("ACF","PACF"), echo=FALSE}
+confirmados_7<-diff(confirmados_e_d,lag=7)
+acf(confirmados_7)
+pacf(confirmados_7)
+```
+
+### Serie de defunciones
+
+Siguiendo con el análisis de la parte estacional de la serie de defunciones, podemos observar en el periodograma de la figura \ref{fig:periodogramaDefunciones} la existencia de dos frecuencias altas que se encuentran cerca de los indices 20 y 60. Una vez que revisamos los valores del periodograma encontramos que los valores del índice 21 asociado con el periodo 7, como ya lo habíamos visto en los correlogramas de la figura \ref{fig:ACF_PACF_defun}. Por otra parte la otra frecuencia alta que podemos observar en el periodograma pertenece al índice 64 que está asociado con el periodo 2, para el cual no encontramos sentido en el contexto de la serie por lo que trabajaremos con una estacionalidad de 7 para la serie de defunciones que ya es estacionaria por lo que podemos proceder a proponer modelos. Los modelos seleccionados son uno de medias móviles de orden uno y un autorregresivo de igual orden.
+
+
+```{r periodogramaDefunciones,fig.cap="\\label{fig:periodogramaDefunciones}Periodograma defunciones",echo=FALSE}
+gperiodograma(defunciones_e_d)
+```
+
+\clearpage
+
+## Modelos para las series de tiempo
+
+A continuación, mostraremos la parte final de metodología Box-Jenkins que consta de ejecutar los algoritmos para encontrar los parámetros de los modelos para ambas series y posteriormente verificar si los supuestos de los residuales se cumplen. Para esto último trabajaremos con una significancia del 0.01 puesto que las series han presentado dificultades al momento de estabilizarlas, en específico la de casos confirmados que al parecer aún tiene datos atípicos, pero son importantes para su modelado.
+
+
+### Modelos generales para serie de casos confirmados 
+
+Ahora que ya tenemos los modelos propuestos tanto en la parte estacional como en la parte regular podemos pasar a encontrar sus parámetros al ejecutar el algoritmo *arima* de las librerías de R. Como ya mencionamos arriba también propondremos modelos que serán únicamente estacionales y serán los que se propusieron en la parte de estacionalidad. En la ecuación \ref{eq:modelosCOnfirmados} se ven los modelos elegidos con parte estacional $ARI(1,1)$ y en la ecuación \ref{eq:modelosCOnf2} los que tienen parte estacional $IMA(1,1)$.
+
+\begin{equation} \label{eq:modelosCOnfirmados}
+\begin{split}
+  ARIMA(0,1,1)(1,1,0)_7  \rightarrow (1-\Phi_{1} B^{7})(1-B)(1-B^{7})  Z_{t} &= (1-\theta_{1} B)\varepsilon_{t} + \mu \\
+  ARIMA(1,1,0)(1,1,0)_7  \rightarrow (1-\phi_{1} B)(1-\Phi_{1} B^{7})(1-B)(1-B^{7}) Z_{t}&=\delta + \varepsilon_{t} \\
+  ARIMA(1,1,1)(1,1,0)_7  \rightarrow (1-\phi_{1} B)(1-\Phi_{1} B^{7})(1-B)(1-B^{7}) Z_{t}&= (1-\theta_{1} B)\varepsilon_{t}     + \delta  \\
+  ARIMA(0,1,0)(1,1,0)_7  \rightarrow (1-\Phi_{1} B^{7})(1-B)(1-B^{7}) Z_{t}&=  \varepsilon_{t}  \\
+ \end{split}
+ \end{equation}
+ 
+\begin{equation} \label{eq:modelosCOnf2}
+\begin{split}
+ ARIMA(0,1,1)(0,1,1)_7  \rightarrow (1-B)(1-B^{7})  Z_{t} &= (1-\theta_{1} B)(1-\Theta_{1}B^{7})\varepsilon_{t} + \mu \\
+ ARIMA(1,1,0)(0,1,1)_7  \rightarrow (1-\phi_{1} B)(1-B)(1-B^{7}) Z_{t}&=(1-\Theta_{1}B^{7})\varepsilon_{t} + \delta \\
+ ARIMA(1,1,1)(0,1,1)_7  \rightarrow (1-\phi_{1} B)(1-B)(1-B^{7})  Z_{t} &= (1-\theta_{1} B)(1-\Theta_{1}B^{7})\varepsilon_{t} + \delta  \\
+ARIMA(0,1,0)(0,1,1)_7  \rightarrow (1-B)(1-B^{7}) Z_{t}&=(1-\Theta_{1}B^{7})\varepsilon_{t} + \mu \\
+\end{split}
+\end{equation}
+
+
+```{r modelos_confirmados,echo=FALSE}
+ma1_ar1<-arima(confirmados_e,order=c(0,1,1),seasonal=list(order=c(1,1,0),period=7),include.mean=TRUE)
+ar1_ar1<-arima(confirmados_e,order=c(1,1,0),seasonal=list(order=c(1,1,0),period=7),include.mean=TRUE)
+arma1_ar1<-arima(confirmados_e,order=c(1,1,1),seasonal=list(order=c(1,1,0),period=7),include.mean=TRUE)
+
+ma1_ma1<-arima(confirmados_e,order=c(0,1,1),seasonal=list(order=c(0,1,1),period=7),include.mean=TRUE)
+ar1_ma1<-arima(confirmados_e,order=c(1,1,0),seasonal=list(order=c(0,1,1),period=7),include.mean=TRUE)
+arma1_ma1<-arima(confirmados_e,order=c(1,1,1),seasonal=list(order=c(0,1,1),period=7),include.mean=TRUE)
+m_ar1<-arima(confirmados_e,order=c(0,1,0),seasonal=list(order=c(1,1,0),period=7),include.mean=TRUE)
+m_ma1<-arima(confirmados_e,order=c(0,1,0),seasonal=list(order=c(0,1,1),period=7),include.mean=TRUE)
+```
+
+
+### Verificación de supuestos
+
+#### Admisibilidad del modelo
+
+
+En la tabla \ref{tab:tablaParamAdmi1} encontramos los parámetros correspondientes a los modelos que tienen parte estacional autorregresiva y podemos ver que todos son admisibles puesto que cumplen con las desigualdades mostradas en la ecuación \ref{eq:admiModelEstaCong} que funcionan para todos los modelos pues todos son de orden uno. Para el caso de los modelos con parte estacional de medias móviles la tabla \ref{tab:tablaParamAdmiConfAuto} muestra que también cumplen las desigualdades ya mencionadas. Así que podemos pasar a la verificación de los supuestos de los residuos.
+
+\begin{equation} \label{eq:admiModelEstaCong}
+\begin{split}
+  |\phi_{1}|&<1 \\
+  |\theta_{1}|&<1 \\
+  |\Phi_{1}|&<1 \\
+  |\Theta_{1}|&<1 \\
+\end{split}
+\end{equation}
+
+```{r tablaParamAdmi1,results='asis',echo=FALSE}
+part1<-c(NaN,ma1_ar1$coef[1],ma1_ar1$coef[2],NaN)
+part2<-c(ar1_ar1$coef[1],NaN,ar1_ar1$coef[2],NaN)
+part3<-c(arma1_ar1$coef[1],arma1_ar1$coef[2],arma1_ar1$coef[3],NaN)
+part4<-c(NaN,NaN,m_ar1$coef[1],NaN)
+r<-data.frame(part1,part2,part3,part4)
+r<-t(r)
+colnames(r)=c("ar1","ma1","sar1","sma1")
+rownames(r)=c("ARIMA(0,1,1)(1,1,0)_7","ARIMA(1,1,0)(1,1,0)_7","ARIMA(1,1,1)(1,1,0)_7","ARIMA(0,1,0)(1,1,0)_7")
+print(xtable(r, digits = 7,caption = "\\label{tab:tablaParamAdmi1} Parámetros de los modelos de la parte estacional autorregresiva"),comment = FALSE )
+```
+
+
+
+```{r tablaParamAdmiConfAuto,results='asis',echo=FALSE}
+part1<-c(NaN,ma1_ma1$coef[1],NaN,ma1_ma1$coef[2])
+part2<-c(ar1_ma1$coef[1],NaN,NaN,ar1_ma1$coef[2])
+part3<-c(arma1_ma1$coef[1],arma1_ma1$coef[2],NaN,arma1_ma1$coef[3])
+part4<-c(NaN,NaN,NaN,m_ma1$coef[1])
+r<-data.frame(part1,part2,part3,part4)
+r<-t(r)
+colnames(r)=c("ar1","ma1","sar1","sma1")
+rownames(r)=c("ARIMA(0,1,1)(0,1,1)_7","ARIMA(1,1,0)(0,1,1)_7","ARIMA(1,1,1)(0,1,1)_7","ARIMA(0,1,0)(0,1,1)_7")
+print(xtable(r, digits = 7,caption = "\\label{tab:tablaParamAdmiConfAuto} Parámetros de los modelos de la parte estacional de medias móviles"),comment = FALSE )
+```
+#### Supuesto de media cero para los residuos
+
+
+Verificamos ahora el supuesto de media cero para los residuos, para ello utilizamos el t-test que tiene como hipótesis nula que la media es igual a cero y como alternativa que no lo es. Por lo tanto si encontramos **p-values** mayores a la  significancia $\alpha=0.01$ no tendremos pruebas suficiente para rechazar la hipótesis nula y podremos dar por cumplido el supuesto para ese modelo.
+
+Podemos ver abajo que todos los modelos lo pasan pues su **p-value** respectivo es mayor a la significancia establecida.
+
+```{r primerMOdlelsup2ar,echo=FALSE}
+print("ARIMA(0,1,1)(1,1,0)_7")
+t.test(ma1_ar1$residuals)
+print("ARIMA(1,1,0)(1,1,0)_7")
+t.test(ar1_ar1$residuals)
+print("ARIMA(1,1,1)(1,1,0)_7")
+t.test(arma1_ar1$residuals)
+print("ARIMA(0,1,0)(1,1,0)_7")
+t.test(m_ar1$residuals)
+```
+
+
+```{r primerMOdlelsup2ma,echo=FALSE}
+print("ARIMA(1,1,0)(0,1,1)_7")
+t.test(ar1_ma1$residuals)
+print("ARIMA(0,1,1)(0,1,1)_7")
+t.test(ma1_ma1$residuals)
+print("ARIMA(1,1,1)(0,1,1)_7")
+t.test(arma1_ma1$residuals)
+print("ARIMA(0,1,0)(0,1,1)_7")
+t.test(m_ma1$residuals)
+```
+
+
+#### Varianza constante para los residuos
+
+
+Se procede a verificar la varianza constante en los residuales con un prueba de Levene, el cual nos indica como hipótesis nula homogeneidad de las varianzas en los residuales y como hipótesis alternativa que hay heterocedasticidad de varianzas. Con un **p-value** mayor al nivel de significancia $\alpha=0.01$ no existen pruebas para rechazar la hipótesis nula. La prueba de Levene en cada uno de los modelos, nos indica que todos tienen varianza homogénea en los residuales debido a que su **p-value**correspondiente es mayor al nivel de significancia.
+
+```{r varianzaConstResidualar,echo=FALSE}
+
+R=10
+
+print("ARIMA(1,1,0)(1,1,0)_7")
+Hoja_g<-grupos_serie(ar1_ar1$residuals,R)
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+
+print("ARIMA(0,1,1)(1,1,0)_7")
+Hoja_g<-grupos_serie(ma1_ar1$residuals,R)
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+
+print("ARIMA(1,1,1)(1,1,0)_7")
+Hoja_g<-grupos_serie(arma1_ar1$residuals,R)
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+
+print("ARIMA(0,1,0)(1,1,0)_7")
+Hoja_g<-grupos_serie(m_ar1$residuals,R)
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+```
+
+```{r varianzaConstResidualma,echo=FALSE}
+
+R=10
+print("ARIMA(1,1,0)(0,1,1)_7")
+Hoja_g<-grupos_serie(ar1_ma1$residuals,R)
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+
+print("ARIMA(0,1,1)(0,1,1)_7")
+Hoja_g<-grupos_serie(ma1_ma1$residuals,R)
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+
+print("ARIMA(1,1,1)(0,1,1)_7")
+Hoja_g<-grupos_serie(arma1_ma1$residuals,R)
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+
+print("ARIMA(0,1,0)(0,1,1)_7")
+Hoja_g<-grupos_serie(m_ma1$residuals,R)
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+```
+
+
+#### No autocorrelación
+
+
+El tercer supuesto que vamos a verificar es el de no autocorrelación aplicando la prueba de Box-Ljung, la cual tiene como hipótesis nula que no hay autocorrelación entre los residuales y una hipótesis alternativa que dice que si hay autocorrelación, con un **p-value** mayor a la significancia de $\alpha=0.01$ no tenemos evidencia suficiente para rechazar la hipótesis nula. Como podemos observar los modelos en los cuales solo tenemos parte estacional $SAR$ y $SMA$ no cumple con la prueba debido a que su **p-value** es menos al nivel de significancia. A diferencia de los demás modelos que pasan la prueba con un **p-value** mayor a  $\alpha=0.01$.
+
+
+```{r L-jung_test_ar, echo=FALSE}
+
+print("ARIMA(1,1,0)(1,1,0)_7")
+Box.test(ar1_ar1$residuals, type = "Ljung")
+# Hipotesis nula: No hay autocorrelación
+
+print("ARIMA(0,1,1)(1,1,0)_7")
+Box.test(ma1_ar1$residuals, type = "Ljung")
+# Hipotesis nula: No hay autocorrelación
+
+print("ARIMA(1,1,1)(1,1,0)_7")
+Box.test(arma1_ar1$residuals, type = "Ljung")
+# Hipotesis nula: No hay autocorrelación
+
+print("ARIMA(0,1,0)(1,1,0)_7")
+Box.test(m_ar1$residuals, type = "Ljung")
+# Hipotesis nula: No hay autocorrelación
+
+```
+
+```{r L-jung_test_ma, echo=FALSE}
+
+print("ARIMA(1,1,0)(0,1,1)_7")
+Box.test(ar1_ma1$residuals, type = "Ljung")
+# Hipotesis nula: No hay autocorrelación
+
+print("ARIMA(0,1,1)(0,1,1)_7")
+Box.test(ma1_ma1$residuals, type = "Ljung")
+# Hipotesis nula: No hay autocorrelación
+
+print("ARIMA(1,1,1)(0,1,1)_7")
+Box.test(arma1_ma1$residuals, type = "Ljung")
+# Hipotesis nula: No hay autocorrelación
+
+print("ARIMA(0,1,0)(0,1,1)_7")
+Box.test(m_ma1$residuals, type = "Ljung")
+# Hipotesis nula: No hay autocorrelación
+
+```
+
+
+#### Normalidad de los residuales
+
+
+Procederemos a verificar el supuesto de normalidad en los residuos con ayuda de la prueba de Anderson Darling, con una hipótesis nula que nos indica que a distribución real de los residuos es normal, por el contrario la hipótesis nula nos indica que no se distribuyen como una normal, con un **p-value** mayor al nivel de significancia $\alpha=0.01$ no tenemos pruebas suficientes para rechazar la hipótesis nula. Con la información que nos proporciona la prueba en todos los modelos rechazamos la hipótesis nula debido a que el **p-value** en todos ellos es menor a $\alpha=0.01$.
+
+```{r normalidadResiduosar,echo=FALSE}
+
+print("ARIMA(1,1,0)(1,1,0)_7")
+ad.test(ar1_ar1$residuals)
+
+print("ARIMA(0,1,1)(1,1,0)_7")
+ad.test(ma1_ar1$residuals)
+
+print("ARIMA(1,1,1)(1,1,0)_7")
+ad.test(arma1_ar1$residuals)
+
+print("ARIMA(0,1,0)(1,1,0)_7")
+ad.test(m_ar1$residuals)
+
+```
+
+```{r normalidadResiduosma,echo=FALSE}
+print("ARIMA(1,1,0)(0,1,1)_7")
+ad.test(ar1_ma1$residuals)
+
+print("ARIMA(0,1,1)(0,1,1)_7")
+ad.test(ma1_ma1$residuals)
+
+print("ARIMA(1,1,1)(0,1,1)_7")
+ad.test(arma1_ma1$residuals)
+
+print("ARIMA(0,1,0)(0,1,1)_7")
+ad.test(m_ma1$residuals)
+
+```
+
+
+#### No existencia de observaciones aberrantes
+
+
+El supuesto de la existencia de observaciones aberrantes lo verificaremos mediante la prueba de Grubbs, la cual nos indica como hipótesis nula la no existencia de datos atípicos en los residuales y una hipótesis alternativa de que al menos existe un dato atípico, por lo que esperamos que el **p-value** en cada uno de las pruebas sea mayor al nivel de significancia $\alpha=0.01$ para decir que no hay existencia de datos atípicos en los residuales.
+
+Una vez que se realizaron las pruebas, vemos que el único modelo que cumple es $ARIMA(1,1,0)(1,1,0)_7$, ya que su **p-value** es mayor a $\alpha=0.01$. Consideramos que los residuales de la serie de casos confirmados cuenta con datos atípicos debido a que la serie tiene aparentes datos atípicos que no pudimos tratar ya que son importantes en el comportamiento, lo cual también se ve reflejado en la parte de normalidad en el supuesto anterior que como ya vimos ningún modelo paso la prueba. 
+
+```{r atipicosResiduosar,echo=FALSE}
+
+print("ARIMA(1,1,0)(1,1,0)_7")
+grubbs.test(ar1_ar1$residuals)
+
+print("ARIMA(0,1,1)(1,1,0)_7")
+grubbs.test(ma1_ar1$residuals)
+
+print("ARIMA(1,1,1)(1,1,0)_7")
+grubbs.test(arma1_ar1$residuals)
+
+print("ARIMA(0,1,0)(1,1,0)_7")
+grubbs.test(m_ar1$residuals)
+```
+
+```{r atipicosResiduosma,echo=FALSE}
+
+print("ARIMA(1,1,0)(0,1,1)_7")
+grubbs.test(ar1_ma1$residuals)
+
+print("ARIMA(0,1,1)(0,1,1)_7")
+grubbs.test(ma1_ma1$residuals)
+
+print("ARIMA(1,1,1)(0,1,1)_7")
+grubbs.test(arma1_ma1$residuals)
+
+print("ARIMA(0,1,0)(0,1,1)_7")
+grubbs.test(m_ma1$residuals)
+```
+
+
+#### Parsimonia del modelo
+
+Una vez que hemos verificado los supuestos anteriores, procederemos a verificar la parsimonia de cada uno de los modelos propuestos, es decir, verificar si los parámetros son significativos para los modelos. Por lo que haremos uso del Z-test, que viene en la librería **lmtest** y se usa para medir la significancia de los coeficientes de la regresión lineal principalmente. La cual indica como hipótesis nula que el parámetro no es significativo para el modelo y como hipótesis alternativa que el parámetro es significativo, con un **p-value** menor a $\alpha = 0.01$ se rechazará la hipótesis nula y se indicará que el parámetro es importante para el modelo. 
+
+Como se pudo observar en el resultado de cada una de las pruebas los parámetros de la parte autorregresiva en los modelos $ARIMA(1,1,1)(1,1,0)_7$ y $ARIMA(1,1,1)(0,1,1)_7$ no son significativos, por lo que estos modelos no se incluirán en parte de comparación de modelos dado que terminan siendo iguales a los modelos $ARIMA(0,1,1)(1,1,0)_7$ y $ARIMA(0,1,1)(0,1,1)_7$. A diferencia de los parámetros de los demás modelos propuestos que son significativos para cada uno de ellos.   
+
+```{r parsimonia_modelsar}
+print("ARIMA(1,1,0)(1,1,0)_7")
+coeftest(ar1_ar1)
+
+print("ARIMA(0,1,1)(1,1,0)_7")
+coeftest(ma1_ar1)
+
+print("ARIMA(1,1,1)(1,1,0)_7")
+coeftest(arma1_ar1)
+
+print("ARIMA(0,1,0)(1,1,0)_7")
+coeftest(m_ar1)
+```
+
+
+```{r parsimonia_modelsma}
+print("ARIMA(1,1,0)(0,1,1)_7")
+coeftest(ar1_ma1)
+
+print("ARIMA(0,1,1)(0,1,1)_7")
+coeftest(ma1_ma1)
+
+print("ARIMA(1,1,1)(0,1,1)_7")
+coeftest(arma1_ma1)
+
+print("ARIMA(0,1,0)(0,1,1)_7")
+coeftest(m_ma1)
+```
+
+#### Comparación de modelos
+
+Como ya se ha verificado la parsimonia de los modelos, procedemos a realizar la comparación de los mismos para poder seleccionar los mejores modelos y proceder a realizar pronósticos. Usaremos el criterio de información bayesiana (BIC) para realizar esta comparación, al ser una medida de comparación se busca el modelo con el menor número arrojado en la prueba. 
+
+Como se puede ver en los resultados obtenidos mediante el criterio BIC los modelos $ARIMA(1,1,0)(0,1,1)_7$ y $ARIMA(0,1,1)(0,1,1)_7$ obtuvieron los menores valores en la prueba. Por lo que procederemos a realizar el ajuste solamente de estos modelos. 
+
+```{r comparacion_confirmados, echo=FALSE}
+
+bic1<-AIC(ar1_ar1, k = log(length(sunspots)))
+
+bic2<-AIC(ma1_ar1,k = log(length(sunspots)))
+
+bic4<-AIC(ar1_ma1, k = log(length(sunspots)))
+
+bic5<-AIC(ma1_ma1,k = log(length(sunspots)))
+
+bic7<-AIC(m_ar1,k = log(length(sunspots)))
+
+bic8<-AIC(m_ma1,k = log(length(sunspots)))
+
+print(paste0("El valor de BIC de ARIMA(1,1,0)(1,1,0)_7 = ",bic1))
+
+print(paste0("El valor de BIC de ARIMA(0,1,1)(1,1,0)_7 = ",bic2))
+
+print(paste0("El valor de BIC de ARIMA(1,1,0)(0,1,1)_7 = ",bic4))
+
+print(paste0("El valor de BIC de ARIMA(0,1,1)(0,1,1)_7 = ",bic5))
+
+print(paste0("El valor de BIC de ARIMA(0,1,0)(1,1,0)_7 = ",bic7))
+
+print(paste0("El valor de BIC de ARIMA(0,1,0)(0,1,1)_7 = ",bic8))
+
+```
+
+
+#### Ajuste de los modelos 
+
+Como se mencionó en la sección anterior se procederá a analizar el ajuste de los modelos $ARIMA(1,1,0)(0,1,1)_7$ y $ARIMA(0,1,1)(0,1,1)_7$, en la figura \ref{fig:ajuste_model_confirmados} se muestra el ajuste de ambos. La sensación que nos dan las gráficas es que el ajuste es bastante bueno, aquí dudamos en cual elegir pues el $ARIMA(1,1,0)(0,1,1)_7$ pasa el supuesto de 
+no existencia de datos atípicos y tienen un muy buen ajuste, pero el $ARIMA(0,1,1)(0,1,1)_7$ resulta ser el mejor según el criterio de información Bayesiana.
+
+```{r ajuste_model_confirmados,out.width="45%",fig.cap="Ajuste de los modelos de serie de casos confirmados" ,fig.subcap=c("ARIMA(0,1,1)(0,1,1)","ARIMA(1,1,0)(0,1,1)"),echo=FALSE}
+
+y_g5<-fitted(ma1_ma1)
+y_g6<-fitted(ar1_ma1)
+
+
+matplot(cbind(confirmados_e,y_g5),type='l', ylab="Datos estabilizados en varianza",main="Ajuste de casos confirmados")
+matplot(cbind(confirmados_e,y_g6),type='l',ylab="Datos estabilizados en varianza",main="Ajuste de casos confirmados")
+
+```
+
+#### Validación
+
+Ahora pasamos a ver cómo se comportan estos modelos con datos que no han visto, los pronósticos generados junto con los valores reales se muestran en la tabla \ref{tab:predict_model_confirmados}, para terminar seleccionando un mejor modelo elegiremos el que reporte un menor error cuadrático medio al comparar sus predicciones con los valores reales.
+
+
+```{r predict_model_confirmados, results='asis',echo=FALSE}
+    colnames(datos)<-c("Fecha","Cantidad")
+    p1<-predict(ma1_ma1,n.ahead = 7)
+    p2<-predict(ar1_ma1,n.ahead = 7)
+    w1<-p1$pred^(1/lc)
+    
+    w2<-p2$pred^(1/lc)
+    
+    colnames(datos)<-c("Fecha","Cantidad")
+    tablau<-data.frame(datos[518:524,],w1,w2)
+    rownames(tablau)<-1:7
+    colnames(tablau)<-c("Fecha","Valores reales","ARIMA(0,1,1)(0,1,1)_7","ARIMA(1,1,0)(0,1,1)_7")
+    print(xtable(tablau,digits=0,caption="\\label{tab:predict_model_confirmados} Valores reales y pronósticos de Mayo 31 a Junio 6"),comment = FALSE )
+```
+
+Después de calcular el error cuadrático medio para ambos modelos nos encontramos con que el mejor modelo es el $ARIMA(1,1,0)(0,1,1)_7$ pues el valor de su **MSE** es $42085.13$, mientras que el de el modelo que tiene parte regular de medias móviles tiene un **MSE** con un valor de $80982.02$ que es el doble de grande. Además al ver las predicciones consideramos que son bastante cercanas a la realidad y que especialmente les ayuda la estacionalidad, pues se nota el cambio en los valores al pasar los días.
+
+\clearpage
+
+### Modelos generales de defunciones
+
+Para la serie de defunciones como vimos los modelos propuestos son casi los mismos que para la serie de casos confirmados a excepción de que aquí no tenemos modelos que son únicamente estacionales y no fue necesario hacer una diferencia estacional pues la serie ya era estacional estacionaria. De forma que los modelos generales finales con parte estacional autorregresiva se muestran en la ecuación \ref{eq:modelosgeneraldefunAr} y los que tienen parte de medias móviles en la parte estacional se muestran en la ecuación \ref{eq:modelosgeneraldefunMa}. Con esto ya podemos ejecutar el algoritmo para encontrar los parámetros para cada uno de los modelos y probar que se cumplanlos  supuestos.
+
+\begin{equation} \label{eq:modelosgeneraldefunAr}
+\begin{split}
+  ARIMA(0,1,1)(1,0,0)_7  \rightarrow (1-\Phi_{1} B^{7})(1-B)  Z_{t} &= (1-\theta_{1} B)\varepsilon_{t} + \mu \\
+  ARIMA(1,1,0)(1,0,0)_7  \rightarrow (1-\phi_{1} B)(1-\Phi_{1} B^{7})(1-B) Z_{t}&=\delta + \varepsilon_{t} \\
+  ARIMA(1,1,1)(1,0,0)_7  \rightarrow (1-\phi_{1} B)(1-\Phi_{1} B^{7})(1-B) Z_{t}&= (1-\theta_{1} B)\varepsilon_{t}     + \delta  \\
+ \end{split}
+ \end{equation}
+ 
+\begin{equation} \label{eq:modelosgeneraldefunMa}
+\begin{split}
+ ARIMA(0,1,1)(0,0,1)_7  \rightarrow (1-B) Z_{t} &= (1-\theta_{1} B)(1-\Theta_{1}B^{7})\varepsilon_{t} + \mu \\
+ ARIMA(1,1,0)(0,0,1)_7  \rightarrow (1-\phi_{1} B)(1-B) Z_{t}&=(1-\Theta_{1}B^{7})\varepsilon_{t} + \delta \\
+ ARIMA(1,1,1)(0,0,1)_7  \rightarrow (1-\phi_{1} B)(1-B)  Z_{t} &= (1-\theta_{1} B)(1-\Theta_{1}B^{7})\varepsilon_{t} + \delta  \\
+\end{split}
+\end{equation}
+
+
+```{r modelosgeneraldefun,echo=FALSE}
+dma1_ar1<-arima(defunciones_e,order=c(0,1,1),seasonal=list(order=c(1,0,0),period=7),include.mean=TRUE)
+dar1_ar1<-arima(defunciones_e,order=c(1,1,0),seasonal=list(order=c(1,0,0),period=7),include.mean=TRUE)
+darma1_ar1<-arima(defunciones_e,order=c(1,1,1),seasonal=list(order=c(1,0,0),period=7),include.mean=TRUE)
+
+dma1_ma1<-arima(defunciones_e,order=c(0,1,1),seasonal=list(order=c(0,0,1),period=7),include.mean=TRUE)
+dar1_ma1<-arima(defunciones_e,order=c(1,1,0),seasonal=list(order=c(0,0,1),period=7),include.mean=TRUE)
+darma1_ma1<-arima(defunciones_e,order=c(1,1,1),seasonal=list(order=c(0,0,1),period=7),include.mean=TRUE)
+
+```
+
+
+### Verificación de supuestos de la serie de defunciones.
+
+#### Admisibilidad del modelo
+
+Para verificar la admisibilidad del modelo seguimos la misma estructura que en la anterior serie, es decir, en una tabla colocaremos los valores de los parámetros correspondientes a cada modelo esperando que cumplan con las desigualdades mostradas en la ecuación \ref{eq:admiModelEstadef}. La tabla con los valores de los parámetros con parte estacional autorregresiva se muestran en la tabla \ref{tab:tablaParamAdmi1Defun}, mientras que los correspondientes a la parte estacional de medias móviles se muestran en la tabla \ref{tab:tablaParamAdmiConfAutoDefun}; en ambos casos podemos observar que se cumplen las desigualdades sin ningún problema.
+
+\begin{equation} \label{eq:admiModelEstadef}
+\begin{split}
+  |\phi_{1}|&<1 \\
+  |\theta_{1}|&<1 \\
+  |\Phi_{1}|&<1 \\
+  |\Theta_{1}|&<1 \\
+\end{split}
+\end{equation}
+
+```{r tablaParamAdmi1Defun,results='asis',echo=FALSE}
+part1<-c(NaN,dma1_ar1$coef[1],dma1_ar1$coef[2],NaN)
+part2<-c(dar1_ar1$coef[1],NaN,dar1_ar1$coef[2],NaN)
+part3<-c(darma1_ar1$coef[1],darma1_ar1$coef[2],darma1_ar1$coef[3],NaN)
+r<-data.frame(part1,part2,part3)
+r<-t(r)
+colnames(r)=c("ar1","ma1","sar1","sma1")
+rownames(r)=c("ARIMA(0,1,1)(1,0,0)_7","ARIMA(1,1,0)(1,0,0)_7","ARIMA(1,1,1)(1,0,0)_7")
+print(xtable(r, digits = 7,caption = "\\label{tab:tablaParamAdmi1Defun} Parámetros de los modelos de la parte estacional autorregresiva"),comment = FALSE )
+```
+
+```{r tablaParamAdmiConfAutoDefun,results='asis',echo=FALSE}
+part1<-c(NaN,dma1_ma1$coef[1],NaN,dma1_ma1$coef[2])
+part2<-c(dar1_ma1$coef[1],NaN,NaN,dar1_ma1$coef[2])
+part3<-c(darma1_ma1$coef[1],darma1_ma1$coef[2],NaN,darma1_ma1$coef[3])
+r<-data.frame(part1,part2,part3)
+r<-t(r)
+colnames(r)=c("ar1","ma1","sar1","sma1")
+rownames(r)=c("ARIMA(0,1,1)(0,0,1)_7","ARIMA(1,1,0)(0,0,1)_7","ARIMA(1,1,1)(0,0,1)_7")
+print(xtable(r, digits = 7,caption = "\\label{tab:tablaParamAdmiConfAutoDefun} Parámetros de los modelos de la parte estacional de medias móviles"),comment = FALSE )
+```
+
+
+#### Supuesto de media cero para los residuos
+
+Nuevamente usaremos un t-test para probar el supuesto de media cero en los residuales, a modo de recordatorio, la hipótesis nula nos dice que hay media cero por lo que esperamos tener un *p-value* mayor a $0.01$ para no rechazar tal hipótesis. El único que pasa este supuesto es el $ARIMA(1,1,0)(1,0,0)_7$ pues su *p-value* es efectivamente mayor a $0.01$
+
+
+```{r primerMOdlelsup2defun,echo=FALSE}
+print("ARIMA(0,1,1)(1,0,0)_7")
+t.test(dma1_ar1$residuals)
+print("ARIMA(1,1,0)(1,0,0)_7")
+t.test(dar1_ar1$residuals)
+print("ARIMA(1,1,1)(1,0,0)_7")
+t.test(darma1_ar1$residuals)
+```
+
+
+```{r primerMOdlelsup2defunciones,echo=FALSE}
+print("ARIMA(0,1,1)(0,0,1)_7")
+t.test(dma1_ma1$residuals)
+print("ARIMA(1,1,0)(0,0,1)_7")
+t.test(dar1_ma1$residuals)
+print("ARIMA(1,1,1)(0,0,1)_7")
+t.test(darma1_ma1$residuals)
+```
+
+
+#### Varianza constante para los residuos
+
+Para verificar este supuesto utilizaremos nuevamente la prueba de Levene, de la cual esperamos que su **p-value** para cada modelo respectivo sea mayor que $\alpha=0.01$ no rechazar la hipótesis nula de homogeneidad de varianzas en los residuos. Como vemos abajo todos los modelos reportan un **p-value** mayor a la significancia establecida y por lo tanto no rechazamos la hipótesis nula de homocedasticidad. 
+
+```{r varianzaConstResidualdefunciones,echo=FALSE}
+
+R=10
+print("ARIMA(1,1,0)(1,0,0)_7")
+Hoja_g<-grupos_serie(dar1_ar1$residuals,R)
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+
+print("ARIMA(0,1,1)(1,0,0)_7")
+Hoja_g<-grupos_serie(dma1_ar1$residuals,R)
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+
+print("ARIMA(1,1,1)(1,0,0)_7")
+Hoja_g<-grupos_serie(darma1_ar1$residuals,R)
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+
+```
+
+```{r varianzaConstResidualmadefun,echo=FALSE}
+
+R=10
+print("ARIMA(1,1,0)(0,0,1)_7")
+Hoja_g<-grupos_serie(dar1_ma1$residuals,R)
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+
+print("ARIMA(0,1,1)(0,0,1)_7")
+Hoja_g<-grupos_serie(dma1_ma1$residuals,R)
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+
+print("ARIMA(1,1,1)(0,0,1)_7")
+Hoja_g<-grupos_serie(darma1_ma1$residuals,R)
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+
+```
+
+
+#### No autocorrelación
+
+Continuando con la verificación de no autocorrelación en los residuos de la serie usaremos la prueba Box-Ljung, en la cual si el **p-value** es mayor a $\alpha=0.01$ no rechazaremos la hipótesis nula que indica que no hay autocorrelación. Abajo podemos observar que todos los modelos pasan este supuesto pues su respectivo **p-value** es mayor a $0.01$.  
+
+
+```{r L-jung_test_ari_defunciones, echo=FALSE}
+
+print("ARIMA(1,1,0)(1,0,0)_7")
+Box.test(dar1_ar1$residuals, type = "Ljung")
+# Hipotesis nula: No hay autocorrelación
+
+print("ARIMA(0,1,1)(1,0,0)_7")
+Box.test(dma1_ar1$residuals, type = "Ljung")
+# Hipotesis nula: No hay autocorrelación
+
+print("ARIMA(1,1,1)(1,0,0)_7")
+Box.test(darma1_ar1$residuals, type = "Ljung")
+# Hipotesis nula: No hay autocorrelación
+
+```
+
+```{r L-jung_test_ma_defunciones, echo=FALSE}
+
+print("ARIMA(1,1,0)(0,0,1)_7")
+Box.test(dar1_ma1$residuals, type = "Ljung")
+# Hipotesis nula: No hay autocorrelación
+
+print("ARIMA(0,1,1)(0,0,1)_7")
+Box.test(dma1_ma1$residuals, type = "Ljung")
+# Hipotesis nula: No hay autocorrelación
+
+print("ARIMA(1,1,1)(0,0,1)_7")
+Box.test(darma1_ma1$residuals, type = "Ljung")
+# Hipotesis nula: No hay autocorrelación
+```
+
+
+#### Normalidad de los residuales
+
+Procedemos a verificar el supuesto de normalidad en los residuales por lo que usaremos nuevamente la prueba de Aderson Darling que con un **p-value** mayor a $\alpha = 0.01$ no tenemos pruebas para rechazar la hipótesis nula la cual indica que la distribución de los residuales es normal. Como vemos en los resultados de la prueba todos los modelos cumplen con el supuesto de normalidad en los residuales ya que el **p-value** de cada uno es mayor al nivel de significancia de $\alpha = 0.01$.
+
+```{r normalidadResiduos_defunciones,echo=FALSE}
+print("ARIMA(1,1,0)(1,0,0)_7")
+ad.test(dar1_ar1$residuals)
+
+print("ARIMA(0,1,1)(1,0,0)_7")
+ad.test(dma1_ar1$residuals)
+
+print("ARIMA(1,1,1)(1,0,0)_7")
+ad.test(darma1_ar1$residuals)
+```
+
+```{r normalidadResiduos,echo=FALSE}
+print("ARIMA(1,1,0)(0,0,1)_7")
+ad.test(dar1_ma1$residuals)
+
+print("ARIMA(0,1,1)(0,0,1)_7")
+ad.test(dma1_ma1$residuals)
+
+print("ARIMA(1,1,1)(0,0,1)_7")
+ad.test(darma1_ma1$residuals)
+```
+
+
+
+#### No existencia de observaciones aberrantes
+
+Se procede a verificar el supuesto de datos atípicos en los residuales utilizando la prueba de Grubbs que nos indica una hipótesis nula de no existencia de observaciones aberrantes, con un **p-value** mayor a $\alpha = 0.01$ no tenemos pruebas suficientes para rechazar la hipótesis. Por lo que todos los modelos cumplen con este supuesto, debido a que las pruebas indican un **p-value** mayor al nivel de significancia de $\alpha = 0.01$ en todos los modelos. 
+
+```{r atipicosResiduosar_defuncionesar,echo=FALSE}
+print("ARIMA(1,1,0)(1,0,0)_7")
+grubbs.test(dar1_ar1$residuals)
+
+print("ARIMA(0,1,1)(1,0,0)_7")
+grubbs.test(dma1_ar1$residuals)
+
+print("ARIMA(1,1,1)(1,0,0)_7")
+grubbs.test(darma1_ar1$residuals)
+```
+
+```{r atipicosResiduosma_defunciones,echo=FALSE}
+
+print("ARIMA(1,1,0)(0,0,1)_7")
+grubbs.test(dar1_ma1$residuals)
+
+print("ARIMA(0,1,1)(0,0,1)_7")
+grubbs.test(dma1_ma1$residuals)
+
+print("ARIMA(1,1,1)(0,0,1)_7")
+grubbs.test(darma1_ma1$residuals)
+```
+
+
+#### Parsimonia del modelo
+
+Una vez que se verificaron los supuestos anteriores, se procede a analizar la parsimonia de los modelos, es decir, se verificará la significancia de cada parámetro en los modelos. Como podemos observar la parte autorregresiva en los modelos $ARIMA(1,1,1)(1,0,0)_7$ y $ARIMA(1,1,1)(0,0,1)_7$ no es significativa ya que su **p-value** es mayor al nivel de significancia de $\alpha = 0.01$. A diferencia de los demás modelos en donde sus parámetros son significativos. 
+
+Por lo que los modelos $ARIMA(1,1,1)(1,0,0)_7$ y $ARIMA(1,1,1)(0,0,1)_7$ no se incluirán en la comparación de los modelos, ya que es lo mismo que tomar los modelos $ARIMA(0,1,1)(1,0,0)_7$ y $ARIMA(0,1,1)(0,0,1)_7$ respectivamente. 
+
+```{r parsimonia_modelsar_defunciones}
+print("ARIMA(1,1,0)(1,0,0)_7")
+coeftest(dar1_ar1)
+
+print("ARIMA(0,1,1)(1,0,0)_7")
+coeftest(dma1_ar1)
+
+print("ARIMA(1,1,1)(1,0,0)_7")
+coeftest(darma1_ar1)
+```
+
+
+```{r parsimonia_modelsma_defunciones}
+
+print("ARIMA(1,1,0)(0,0,1)_7")
+coeftest(dar1_ma1)
+
+print("ARIMA(0,1,1)(0,0,1)_7")
+coeftest(dma1_ma1)
+
+print("ARIMA(1,1,1)(0,0,1)_7")
+coeftest(darma1_ma1)
+```
+
+#### Comparación de modelos
+
+Se procede a realizar la comparación de los modelos mediante el uso del criterio de información bayesiana (BIC), el cual busca el modelo con el menor valor obtenido en la prueba. Como se puede observar los modelos $ARIMA(1,1,0)(1,0,0)_7$ y $ARIMA(0,1,1)(1,0,0)_7$ obtuvieron el menor valor de los 4 modelos propuestos, por lo que solamente realizaremos el ajuste en estos modelos. 
+
+```{r comparacion_model_defunciones, echo=FALSE}
+
+bic1<-AIC(dar1_ar1, k = log(length(sunspots)))
+
+bic2<-AIC(dma1_ar1,k = log(length(sunspots)))
+
+bic4<-AIC(dar1_ma1, k = log(length(sunspots)))
+
+bic5<-AIC(dma1_ma1,k = log(length(sunspots)))
+
+print(paste0("El valor de BIC de ARIMA(1,1,0)(1,0,0)_7 = ",bic1))
+
+print(paste0("El valor de BIC de ARIMA(0,1,1)(1,0,0)_7 = ",bic2))
+
+print(paste0("El valor de BIC de ARIMA(1,1,0)(0,0,1)_7 = ",bic4))
+
+print(paste0("El valor de BIC de ARIMA(0,1,1)(0,0,1)_7 = ",bic5))
+```
+
+
+#### Ajuste de los modelos
+
+En la parte (a) de la figura \ref{fig:ajuste_model_defunciones} se observa el modelo $ARIMA(1,1,0)(1,0,0)_7$ en la opinión del equipo es el que tiene un mejor ajuste en comparación con el modelo $ARIMA(0,1,1)(1,0,0)_7$ el cual podemos observar en la parte (b) de la misma figura. 
+
+Como se ha visto en la verificación de los supuestos, el modelo $ARIMA(1,1,0)(1,0,0)_7$ cumple con todos los supuestos mencionados a diferencia del modelo $ARIMA(0,1,1)(1,0,0)_7$ que no cumple con el supuesto de media cero a pesar de que cumple con los otros supuestos. 
+
+```{r ajuste_model_defunciones,out.width="45%",fig.cap="Ajuste de los modelos de serie de defunciones" ,fig.subcap=c("ARIMA(0,1,1)(1,0,0)","ARIMA(1,1,0)(1,0,0)"),echo=FALSE}
+y_g1<-fitted(dma1_ar1)
+y_g2<-fitted(dar1_ar1)
+
+matplot(cbind(defunciones_e,y_g1),type='l', ylab="Valor estabilizado en varianza", main="Serie de defunciones")
+matplot(cbind(defunciones_e,y_g2),type='l', ylab="Valor estabilizado en varianza", main="Serie de defunciones")
+
+```
+
+#### Validación
+
+En la tabla \ref{tab:predict_model_defunciones} se puede observar la comparación de las predicciones tanto para el modelo $ARIMA(1,1,0)(1,0,0)_7$ y $ARIMA(0,1,1)(1,0,0)_7$ donde podemos notar que en primera instancia el que tiene predicciones más acertadas en el $ARIMA(0,1,1)(1,0,0)_7$ debido a que los valores pronosticados se acercan a los valores reales, algo que no se esperaba ya que en la gráfica de la figura \ref{fig:ajuste_model_defunciones} no muestra un ajuste tan bueno como el del modelo $ARIMA(1,1,0)(1,0,0)_7$. 
+
+Además se realizó la comparación del error cuadrático medio (MSE) de ambos modelos donde se pudo observar que el MSE del modelo $ARIMA(1,1,0)(1,0,0)_7$ con un valor de $127.1325$ es ligeramente menor al MSE del modelo $ARIMA(0,1,1)(1,0,0)_7$ el cual nos indica un valor de $135.7937$. Por lo tanto se elige como el mejor modelo al $ARIMA(1,1,0)(1,0,0)_7$
+
+```{r predict_model_defunciones, results='asis',echo=FALSE}
+    p1<-predict(dar1_ar1,n.ahead = 7)
+ 
+    p2<-predict(dma1_ar1,n.ahead = 7)
+    
+    w1<-p1$pred^(1/ld)
+    
+    w2<-p2$pred^(1/ld)
+    
+    colnames(datos1)<-c("Fecha","Cantidad")
+    tablau<-data.frame(datos1[498:504,],w1,w2)
+    rownames(tablau)<-1:7
+    colnames(tablau)<-c("Fecha","Valores reales","ARIMA(1,1,0)(1,0,0)_7","ARIMA(0,1,1)(1,0,0)_7")
+    print(xtable(tablau,digits=0,caption="\\label{tab:predict_model_defunciones} Valores reales y pronósticos de Mayo 31 a Junio 6"),comment = FALSE )
+```
+
+
+
+## Predicciones actuales
+
+Antes de ver las predicciones podemos observar los datos desde el 31 de mayo hasta el 23 de junio en la tabla \ref{tab:actualDatosConf}, en esa tabla se ven tanto los datos de la serie de casos confirmados como los de la serie de defunciones, estos datos no habían sido mostrados antes por que no eran el conjunto de datos de prueba.
+
+Ahora nos disponemos a efectuar pronósticos para días futuros partiendo de datos que están desde enero del 2021 hasta el 23 de junio usando los mismos modelos haciendo una actualización bastante grande pero que consideramos pertinente puesto que hemos verificado al estar realizando este estudio que las series con diferente cantidad de datos sigue un comportamiento similar al menos en el último medio año y lo que si cambiaba era el poder de predicción. Para realizar la actualización hemos optado por correr los mismos modelos con las mismas transformaciones ya que realizar esto con ayuda del software R es bastante rápido.
+
+Las predicciones para la serie de casos confirmados se muestran en la tabla \ref{tab:actualPredicConf}, 
+en ella podemos observar que si bien hay una tendencia a la alza, los valores esperados se mantendrían en el rango establecido por la última semana.
+
+
+Y las predicciones para la serie de defunciones se muestran en la tabla \ref{tab:actualPredicDef}, notamos que los valores esperados siguen una tendencia a la baja como lo sugieren los últimos valores de la serie. Es interesante ver cómo los valores esperados para la serie de defunciones van a la baja, mientras que los de la serie de casos confirmados se mantiene en su tendencia a la alza, no se sabemos a qué se puede deber esto pero es otra de las muestras de que no hay una relación tan directa entre estas dos series.
+
+```{r actualDatosConf,results='asis',echo=TRUE}
+datos2<-read.csv("Datos/Nuevos_Confirmados.csv")
+datos3<-read.csv("Datos/Nuevos_Defunciones.csv")
+tablan<-data.frame(datos2[518:541,],Defunciones=datos3[498:521,"Valor"])
+colnames(tablan)<-c("Fecha","Casos confirmados","Defunciones")
+print(xtable(tablan,digits=0,caption="\\label{tab:actualDatosConf} Datos actualizados"),comment=FALSE)
+
+```
+
+
+
+```{r actualPredicConf,results='asis',echo=TRUE}
+
+confirmados_new<-ts(datos2[368:541,"Valor"])
+confirmados_new_e<-confirmados_new^(lc) # Se eleva a la misma lambda que el de
+n_ar1_ma1<-arima(confirmados_new_e,order=c(1,1,0),seasonal=list(order=c(0,1,1),period=7),include.mean=TRUE)
+
+p1<-predict(n_ar1_ma1,n.ahead=7)$pred^(1/lc)
+tablap_conf<-data.frame(Fecha=c("24-06-21","25-06-21","26-06-21","27-06-21","28-06-21","29-06-21","30-06-21"),Prediccion=p1)
+print(xtable(tablap_conf,digits=0,caption="\\label{tab:actualPredicConf} Predicciones a siete días de casos confirmados"),comment=FALSE)
+```
+
+
+```{r actualPredicDef,results='asis',echo=FALSE}
+
+defunciones_new<-ts(datos3[348:521,"Valor"])
+defunciones_new_e<-defunciones_new^(ld)
+nd_ar1_ar1<-arima(defunciones_new_e,order=c(1,1,0),seasonal=list(order=c(1,0,0),period=7),include.mean=TRUE)
+
+pd1<-predict(nd_ar1_ar1,n.ahead=7)$pred^(1/ld)
+tablap_def<-data.frame(Fecha=c("24-06-21","25-06-21","26-06-21","27-06-21","28-06-21","29-06-21","30-06-21"),Prediccion=pd1)
+print(xtable(tablap_def,digits = 0,caption="\\label{tab:actualPredicDef} Predicciones a siete días de defunciones"),comment = FALSE)
+```
+
+# Conclusiones 
+
+A lo largo de este trabajo nos encontramos con muchas dificultades puesto que estas series fueron difíciles de tratar, en específico la serie de datos confirmados que incluso hubo momentos en los que creímos que no sería posible utilizar la metodología de Box-Jenkins para predecir sus valores debido a que no se estabilizaba o porque no cumplía los supuestos, en comparación de la serie de defunciones que en todo momento pudimos seguir los pasos de la metodología y todo funcionaba. En todo esto decidimos probar distintos conjuntos de datos dentro del lapso de 6 meses, que nos pareció el más importante dadas las circunstancias del fenómeno, para ver cual explicaba mejor  el comportamiento del mismo
+pues a nuestra consideración y también por que los datos nos respaldaron decidimos que el pasado lejano en estas series(un año) aporta poca información a las predicciones futuras por lo cambiante del fenómeno a lo largo de cortos periodos de tiempo. Si bien estos no fueron los únicos problemas a los que nos enfrentamos, si fueron los más significantes y los que tardamos más tiempo en solucionar, como nos dimos cuenta trabajar con una serie real no es lo mismo que trabajar con series que ya hasta tienen tutoriales y muchos documentos que muestran cuál es el correcto tratamiento y cómo hacerlas funcionar con esta metodología.
+
+Finalmente conseguimos cumplir el objetivo y todo el esfuerzo realizado valió la pena, pues ahora conocemos un poco más sobre la pandemia y en específico sobre algunos de sus factores representativos en nuestro país, además de tener un pronóstico actualizable para que quien lo use pueda conocer los valores esperados para el futuro de estos aspectos de la pandemia.
+
+Al final no somos observadores imparciales y los pronósticos obtenidos especialmente para la serie de casos confirmados son alarmantes, nos recuerdan que esta pandemia no se ha terminado, que no hay que bajar la guardia, y debemos seguir con las recomendaciones sanitarias. Aunque los pronósticos de la serie de defunciones nos dan algo más de esperanza al ver que los valores esperados parecen seguir a la baja, nuestro pensamiento final es que hay que seguir cuidándonos y no desesperar porque podremos salir de esta pandemia.  
+
+\clearpage
+
+# Bibliografía 
+
+
+

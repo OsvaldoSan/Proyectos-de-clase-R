@@ -1,0 +1,5 @@
+# Documentación necesaria
+https://rcompanion.org/rcompanion/d_08a.html
+https://www.statisticshowto.com/friedmans-test/
+http://www.bioconductor.org/packages/release/bioc/html/mixOmics.html
+https://sites.google.com/site/parametricaynoparametrica/home/bloque-3/temas3/testdefriedman

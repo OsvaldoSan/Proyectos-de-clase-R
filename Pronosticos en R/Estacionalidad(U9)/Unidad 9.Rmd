@@ -1,0 +1,1731 @@
+---
+title: "Unidad 9"
+author:
+- "Abdelrrague Manzanares Caleb Elihud"
+- "González Zequeida Helena"
+- "Ramírez Pedraza Ariadna Fernanda"
+- "Santos Soto Martín Osvaldo"
+
+header-includes:
+  - \usepackage[spanish]{babel}
+  - \renewcommand{\and}{\\}
+output:
+    pdf_document:
+      extra_dependencies: "subfig"
+      keep_tex: yes 
+      fig_caption: yes
+      number_sections: yes
+      toc: yes
+date: "16 de Junio del 2021"
+csl: apa.csl
+bibliography: Pronosticos2.bib
+---
+
+\listoffigures
+\listoftables
+\pagebreak
+
+```{r setup, include=FALSE}
+# Todos los datos estan ahora en datos
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE, message = FALSE)
+library(readxl)
+library(tseries) # Test de Dickey Fuller
+library(Metrics)
+library(forecast)
+library(car)
+library(nortest)
+library(outliers)
+library(lmtest) # Para coeftest
+library(R.utils) # PAra insert
+library(strucchange)# prueba CUSUM 
+
+library(xtable)
+options(xtable.floating = TRUE)# Es true para que latex reconozca que es una tabla
+options(xtable.timestamp = "")
+#Librerias para el proceso
+
+```
+
+
+# Desestacionalización de series de tiempo
+
+## Actividad 9.1. 
+
+Elabore un resumen de máximo una cuartilla sobre la lectura de la sección de antecedentes en (INEI, 2002).
+
+Aunque para nosotros que estudiamos las series de tiempo hoy en día nos parece muy evidente la descomposición de las mismas
+en 4 factores, puesto que lo hemos leído bastantes veces, no hay que olvidar que tuvieron que pasar décadas e incluso siglos para llegar
+hasta el lugar en el que estamos. Los inicios se dieron en el área de economía que es el gran impulsor de los estudios sobre
+series de tiempo, estos primeros estudios buscaban descomponer una serie de tiempo en varios factores "invisibles" para poder analizarlos
+ y pronosticarlos por separado; uno de los resultados más importantes fue el desarrollo de un sistema de índices para apreciar las
+las condiciones corrientes de la economía, fue el llamado "barómetro de proyección del ciclo económico". Estos resultados se
+fueron perfeccionando hasta llegar a los métodos de Harvard que ya menciona la descomposición en 4 factores: Tendencia, fluctuaciones cíclicas,
+fluctuaciones estacionales y fluctuaciones irregulares. Con ello también ha habido una gran discusión acerca de si deben ir por separado
+las fluctuaciones cíclicas y la tendencia, por que se dice que los efectos externos que las provocan son diferentes y por ende no están relacionadas,
+pero se ha demostrado que tienen más relación de la que se pensaba hace algunos años. Esto ha desembocado en que ahora tengamos
+técnicas para desestacionalizar las series de tiempo, así como mejorar la experiencia en el tratamiento de los ciclos.
+
+\pagebreak
+
+## Ejemplo 9.1.1. 
+
+Travels Rest, Inc., administra cuatro hoteles y están interesados en un
+modelo de pronóstico a corto plazo (un año) para la cantidad de habitaciones ocupadas
+en dichos hoteles, a efecto de decidir la contratación de empleados extra para el verano,
+así como presupuestos para publicidad y compra de materiales que tardan mucho en ser
+entregados. La tabla 9-1 muestra los datos disponibles de 14 años (el año 15 se utilizó
+como validación del modelo); dado que se desean pronósticos mensuales, se
+promediaron las observaciones de un mes entre el número de días del mes. Grafique los
+datos, identifique si existe algún tipo de patrón estacional y, si es necesario, aplique una
+transformación de potencia para lograr una fluctuación estacional constante.
+
+
+En la figura \ref{fig:graficaSerie} se muestra la gráfica de la serie, donde podemos observar estacionalidad anual, pero que no es estacionalidad constante puesto que el valor de la serie va aumentando y mantiene la 
+estacionalidad. 
+
+```{r graficaSerie, fig.cap='\\label{fig:graficaSerie}Gráfica de la serie Travelz Rest Inc.', echo=FALSE}
+# Todos los datos estan ahora en datos
+dataset <- read_excel("Ejemplo 9.1.1..xlsx")
+serie <- ts(dataset$Y,frequency=12)
+plot(serie,xlab='Años')
+```
+
+Aplicamos una transformación de potencia a la serie para que su
+estacionalidad se vuelva constante, esto lo vemos en la figura \ref{fig:estacioConstanteS} donde se aplico una la potencia $y=serie^{0.3}$.
+
+```{r estacioConstanteS, fig.cap='\\label{fig:estacioConstanteS}Gráfica de la serie Travelz Rest Inc.(Aplicado el logaritmo)', echo=FALSE}
+y<-serie^(0.3)
+plot(y,xlab='Años')
+```
+
+
+\pagebreak
+
+## Actividad 9.2.2
+
+En el problema de Travelers Rest, Inc. (tabla 9-1), utilice R para realizar una
+regresión con variables ficticias sobre la serie con estacionalidad constante y
+pronosticar los promedios de las habitaciones de hotel ocupadas en los meses 169
+y 170 con un intervalo de confianza del 95%. Compruebe los supuestos referentes
+a los residuales del modelo.
+
+Vamos a realizar una regresión lineal para estimar la serie de tiempo,
+supondremos tendencia lineal y añadiremos 11 parámetros correspondientes
+a las variables indicadoras por que consideramos que hay estacionalidad 
+anual, es decir, de doce meses.
+
+```{r ajusteModeloAct,results='asis',echo=TRUE}
+datos<-data.frame(t=seq(1,length(y)),seasonaldummy(y))
+mod1=lm(y~t+Jan+Feb+Mar+Apr+May+Jun+Jul+Aug+Sep+Oct+Nov,data=datos)
+print(xtable(mod1, digits = 6,caption = "\\label{tab:ajusteModeloAct}Regresión lineal"),comment = FALSE)
+```
+
+
+Como podemos apreciar en el cuadro \ref{tab:ajusteModeloAct} todos los parámetros presentan una
+significancia del 5% excepto por uno, así que continuaremos con el proceso
+y veremos que los residuales cumplan lo requerido.
+
+Usamos ahora el modelo para predecir a dos mese en adelante y obtenemos
+los siguientes valores en el cuadro \ref{tab:act922pro} con un intervalo de confianza del 95%.
+
+```{r act922pro,results='asis',echo=TRUE}
+nuevo=data.frame(t=c(169,170),seasonaldummy(y,2))
+p<-predict(mod1,newdata=nuevo,interval="confidence", level=0.95)
+print(xtable(p, digits = 6,caption = "\\label{tab:act922pro}Predicciónes para 169 y 170"),comment = FALSE)
+```
+\pagebreak
+
+### Análisis de supuestos del modelo
+
+Revisamos solo la normalidad y homocedasticidad  en los residuos con un test de Shapiro-Wilk y un bptest respectivamente, lo cual nos indica que no hay normalidad en los residuos ni homocedasticidad pues su p-values son menores a 0.05, de hecho esto nos hace pensar que tal vez no debimos
+de hacer la transformación a la serie puesto que da valores de p más
+grandes y cercanos a 0.05 si la potencia(de la serie) es cercana a 1. Pero después de intentarlo nos dimos cuenta de que en realidad ni así aprueban
+los test sus residuos.
+
+Para la prueba de independencia desplazamos el valor de los residuos sumándole 5 puesto que el test de chi-squared no acepta valores negativos, esto no afecta a la interpretación de los resultados pues mantienen la relación(si la hay) igual. En el podemos apreciar que si hay independencia en los residuos pues se no se rechaza la hipótesis nula.
+
+
+```{r residualesSup1E91,echo=TRUE}
+r1<-mod1$residuals
+shapiro.test(r1)
+
+bptest(mod1)
+
+chisq.test(r1+5)
+```
+
+\pagebreak
+
+## Actividad 9.3.2
+
+A la misma gráfica que usamos en la actividad 9.2.2 le aplicamos un modelo ahora con variables trigonométricas; el cual decidimos hacer con un valor de $m=2$ ya que
+es el recomendado para mantener la parsimonia del modelo.
+
+```{r trigoGrafAct,results='asis', echo=TRUE}
+It.trig=fourier(y,2)
+t<-1:(length(y))
+#datos<-data.frame(1:(length(y)),)
+mod2 <-lm(y~t+It.trig)
+print(xtable(mod2, digits = 6,caption = "\\label{tab:trigoGrafAct}Regresión lineal con variables trigonométricas"),comment = FALSE)
+```
+
+El modelo, que se aprecia en el cuadro \ref{tab:trigoGrafAct}, se ve bien; todos sus parámetros son significantes así que procedemos a hacer
+la predicción con un intervalo de confianza de 95%.
+
+```{r predAct92tri,results='asis',echo=TRUE}
+Itp.f = fourier(y,2,2)
+prons.vt = predict(mod2,data.frame(t = (1:2), It.trig=I(Itp.f)),interval="confidence",level=0.95)
+print(xtable(prons.vt, digits = 6,caption = "\\label{tab:predAct92tri}Predicciónes para 169 y 170 con variables trigonometricas"),comment = FALSE)
+```
+
+En el cuadro \ref{tab:predAct92tri} se aprecian las predicciones con sus intervalos de confianza.
+La diferencia es notoria respecto al de las variables ficticias, es prácticamente una unidad
+menos en este nuevo modelo y los intervalos de confianza tienen el mismo comportamiento
+en ambos pero en este modelo bajaron también alrededor de una unidad.
+
+\pagebreak
+
+## Actividad 9.3.3
+
+Modele la serie estacional correspondiente al índice general de comercio al por
+menor en México y la del valor de la producción obtenida de jitomate rojo.
+ 
+### Serie índice general de comercio al por menor en México 
+
+En la figura \ref{fig:graficaComercio} se muestra la gráfica de la serie, donde podemos observar existe una estacionalidad anual, pero no es una estacionalidad constante puesto que el valor de la serie va aumentando pero mantiene esta estacionalidad. 
+
+```{r graficaComercio, fig.cap='\\label{fig:graficaComercio}Gráfica de la serie Comercio al por menor', echo=FALSE}
+  
+dataset <- read_excel("Comercio al por menor.xlsx")
+comercio <- ts(dataset$Dato,frequency=12)
+plot(comercio,xlab='Años')
+```
+
+
+Se aplica una transformación de potencia a la serie para que su estacionalidad se vuelva constante, lo cual vemos en la figura \ref{fig:estacionalidad} donde se aplico una la potencia $y=serie^{0.4}$.
+
+
+```{r estacionalidad, fig.cap='\\label{fig:estacionalidad}Gráfica de la serie Comercio al por menor(Aplicado la potencia)', echo=FALSE}
+potencia<-comercio^(0.4)
+plot(potencia,xlab='Años')
+```
+
+Añadiremos 11 parámetros correspondientes a las variables indicadoras ya que se considera hay estacionalidad anual. El modelo se presenta en el cuadro \ref{tab:ajustemodelocomercio}, además que podemos observar todos los  parámetros son significativos para el modelo.
+
+```{r ajustemodelocomercio,results='asis',echo=TRUE}
+dato<-data.frame(t=seq(1,length(potencia)),seasonaldummy(potencia))
+mod1=mod1=lm(potencia~t+Jan+Feb+Mar+Apr+May+Jun+Jul+Aug+Sep+Oct+Nov,data=dato)
+print(xtable(mod1, digits = 6,caption = "\\label{tab:ajustemodelocomercio}Regresión lineal modelo de comercio"),comment = FALSE)
+```
+
+
+\clearpage
+
+
+### Serie Producto Interno Bruto
+
+En la figura \ref{fig:graficaBruto} se ve la Gráfica de la serie producto interno bruto trimestral sin tratar. En la cual podemos observar existe una tendencia lineal creciente, además de notar que existe estacionalidad trimestral ya que hay periodos parecidos en la serie de tiempo.
+
+```{r graficaBruto, fig.cap='\\label{fig:graficaBruto}Gráfica de la serie  Producto interno bruto trimestral', echo=FALSE}
+  
+dataset <- read_excel("Producto interno bruto.xlsx")
+bruto <- ts(dataset$Dato,frequency=4)
+plot(bruto,xlab='Trimestre')
+```
+
+Se aplica una transformación de potencia a la serie para que su estacionalidad se vuelva constante, lo cual vemos en la figura \ref{fig:estacionalidadbruta} donde se aplicó una la potencia $y=serie^{0.4}$.
+
+
+```{r estacionalidadbruta, fig.cap='\\label{fig:estacionalidadbruta}Gráfica de la serie Producto Interno Bruto(Aplicado la potencia)', echo=FALSE}
+potenciab<-bruto^(0.4)
+plot(potenciab,xlab='Trimestre')
+```
+
+Añadiremos 3 parámetros correspondientes a las variables indicadoras ya que se considera hay estacionalidad trimestral. En el cuadro \ref{tab:ajustemodelobruto} vemos el modelo. Además de notar que los valores son significativos a excepción del valor correspondiente a Q3 el cual no es muy significativo al modelo.
+
+```{r ajustemodelobruto,results='asis',echo=TRUE}
+dato<-data.frame(t=seq(1,length(potenciab)),seasonaldummy(potenciab))
+mod1=mod1=lm(potenciab~t+Q1+Q2+Q3,data=dato)
+print(xtable(mod1, digits = 6,caption = "\\label{tab:ajustemodelobruto}Regresión lineal modelo bruto"),comment = FALSE)
+```
+
+\pagebreak
+
+
+## Actividad 9.3.4
+
+Se aplicará un modelo de regresión para el factor estacional de la serie de tiempo Indice de la Maquila de exportación. En la figura \ref{fig:graficaMaquila} podemos observar existe estacionalidad anual.
+
+```{r graficaMaquila, fig.cap='\\label{fig:graficaMaquila}Gráfica de la serie Indice de la Maquila de exportación', echo=FALSE}
+  
+dataset <- read_excel("Maquila de exportación.xlsx")
+maquila <- ts(dataset$Dato,frequency=12)
+plot(maquila,xlab='Años')
+```
+
+Se aplica una transformación de potencia a la serie para que su estacionalidad se vuelva constante, lo cual vemos en la figura \ref{fig:estacionalidadmaquila} donde aplicamos una potencia de $y=serie^{0.4}$.
+
+
+```{r estacionalidadmaquila, fig.cap='\\label{fig:estacionalidadmaquila}Gráfica de la serie Indice de la Maquila de exportación(Aplicado la potencia)', echo=FALSE}
+potenciam<-maquila^(0.3)
+plot(potenciam,xlab='Años')
+```
+
+Añadiremos 11 parámetros correspondientes a las variables indicadoras ya que se considera hay estacionalidad anual. En el cuadro \ref{tab:ajustemodelomaquila} vemos el modelo. En el cual podemos observar que los valores obtenidos obtenidos la mayoría de ellos no son muy significativos al modelo.  
+
+```{r ajustemodelomaquila,results='asis',echo=TRUE}
+dato<-data.frame(t=seq(1,length(potenciam)),seasonaldummy(potenciam))
+mod1=mod1=lm(potenciam~t+Jan+Feb+Mar+Apr+May+Jun+Jul+Aug+Sep+Oct+Nov,data=dato)
+print(xtable(mod1, digits = 6,caption = "\\label{tab:ajustemodelomaquila}Regresión lineal modelo Indice de la Maquila de exportación"),comment = FALSE)
+```
+
+\pagebreak
+
+## Actividad 9.3.5
+
+Mapa mental correspondiente a los diversos ajustes en series de tiempo.
+
+![Mapa Mental](Tablas excel/Mapa_mental 9.3.5.png)
+
+\pagebreak
+
+# Descomposición multiplicativa
+
+## Ejemplo 9.2.1
+
+En la figura \ref{fig:TatsySerie1} vemos la gráfica de la serie de tiempo
+de Tatsy cola. Podemos notar que si hay estacionalidad, en especifico hay estacionalidad anual que es creciente respecto a la media, por lo que usar
+el método de descomposición multiplicativa.
+
+```{r TatsySerie1,fig.cap="\\label{fig:TatsySerie1} Tatsy Cola ventas mensuales",echo=FALSE}
+y<-read_excel("Tablas excel/Ejemplo 9.2.1..xlsx")
+y<- ts(y$Yt)
+plot(y)
+```
+
+Aplicamos ahora los pasos para la descomposición, primero definimos a $L=12$ 
+pues observamos estacionalidad anual, posteriormente aplicamos el método de 
+medias móviles alineado al centro para que los valores  de las medias 
+móviles empiecen en la posición 6, luego para encontrar las medias móviles centradas aplicamos de nuevo la misma función pero alineada a la derecha para que las coloque empezando en 7. En el cuadro \ref{tab:TablaTatsyFinal} se pueden ver.
+
+```{r tatsyMemc,echo=TRUE}
+#1. Calculamos las medias móviles
+L=12
+mm<-rollmean(y,12,align="center")
+CMA<-rollmean(mm,2,align = "right")
+```
+
+Ahora queremos calcular la tendencia y el error aleatorio en base a lo anterior, ya que las medias móviles centradas representan a la tendencia por el componente cíclico $CMA_{t}=tr_{t}cl_{t}$. Entonces podemos encontrar componente estacional por la componente aleatoria como lo siguiente $s_{t}\epsilon_{t}=\dfrac{y_{t}}{CMA_{t}}$; y hay que considerar que se perdieron 11 valores con las medias móviles, 6 al principio y 5 al final y ya en las centradas se pierden 12 con 6 al principio y 6 al final. En el cuadro \ref{tab:TablaTatsyFinal} se puede ver el valor de $s_{t}\epsilon_{t}$.
+
+```{r tatsyAlgo2,echo=TRUE}
+st_et<-y[7:30]/CMA
+```
+
+Con eso podemos pasar ya al paso 3 del algoritmo que es el cálculo estacional
+para cada uno de los $L$ periodos, esto quiere decir que calcularemos $\bar{s}$ para cada mes en este caso y se irá repitiendo correspondiendo al mes lo que significa que se calcularan 12 valores de $\bar{s}$ y el valor 13 será el valor que 1 y así se seguirá. Con esto ya tenemos un valor para calcular la componente estacional, y se puede ver en el cuadro \ref{tab:TablaTatsyFinal}.
+
+```{r tastyAlgo3Func,results='asis',echo=FALSE}
+fun_estacional<-function(var){
+  s<-c()
+  for (i in 1:L){
+    cont<-0
+    s[i]<-0
+    for (j in 1:length(var) ){
+      u_star<-start(var)[1] # en que mes empieza
+      mes<- (j+u_star-1)%%12
+      if(mes==0){
+        mes=12
+      }
+      if(mes==i){
+        s[i]<-s[i]+var[j]
+        cont<- cont+1
+      }
+    }
+    s[i]<-s[i]/cont
+  }
+  s
+}
+
+s<-fun_estacional(st_et)
+```
+
+El otro componente para calcular la componente estacional es $m$ que es un multiplicador, que es algo así como la contribución promedio de la estacionalidad en cada mes. Ya con esto y con $\bar{s}$ podemos calcular
+la componente estacional de la serie $s_{t}$. El resultado se ve en el cuadro \ref{tab:TablaTatsyFinal}.
+
+```{r algoTatsySumM,echo=TRUE}
+m<-L/sum(s)
+s_t<-s*m
+```
+
+Con lo que nos muestra el cuadro \ref{tab:TablaTatsyFinal} podemos ver que por ejemplo enero hace un aporte un 50% menor de lo que se espera de cada mes,pero por ejemplo septiembre tiene un aporte de extra de 99%, es decir , aporta casi lo de dos meses a la actividad total en el año.
+
+Ahora que tenemos la componente estacional podemos usar la razón $\dfrac{y_{t}}{s_{t}}$ para obtener la serie sin dicha componente. En la figura
+\ref{fig:tatsyALgo4Fig} podemos ver la serie sin componente estacional.
+
+```{r tatsyALgo4Fig,fig.cap="\\label{fig:tatsyALgo4Fig} Serie sin componente estacional",echo=TRUE}
+s_t<-c(s_t,s_t,s_t) # Para hacerlo repetido y más grande
+d<-y/s_t
+plot(d)
+```
+
+Para el paso 5 haremos una proyección de la tendencia con un modelo lineal, ya que en la figura de la serie se aprecia que tiene un comportamiento lineal. En el cuadro \ref{tab:TablaTatsyFinal}.
+
+```{r tatsyAlgo5Mod,echo=TRUE}
+t<-1:length(d)
+datos<-data.frame(t,d)
+tr<-lm(d~t,datos)
+```
+
+Ahora queremos encontrar el valor de $tr_{t}s_{t}$,y como tenemos ambos se obtiene directo y da los valores que muestra el cuadro \ref{tab:TablaTatsyFinal}.
+
+```{r tatsyALgo6mul,echo=TRUE}
+tr_st<-tr$fitted.values * s_t
+```
+
+Estamos en posición de calcular la componente $cl_{t}\epsilon_{t}$ que no es más que el cociente $\dfrac{y_{t}}{tr_{t}s_{t}}$. En el cuadro \ref{tab:TablaTatsyFinal} se ven los valores.
+
+```{r tatsyAlgo7ct,echo=TRUE}
+ct_et<-y/tr_st
+
+```
+
+Ahora solo necesitamos la componente cíclica por separado y se calcula con medias móviles alineadas al centro con un periodo de 3. En el cuadro \ref{tab:TablaTatsyFinal} se puede ver la componente cíclica y aleatoria por separado.
+
+```{r tatstyAlgo8cic,echo=TRUE}
+clt<-rollmean(ct_et,3,align="center")
+et<-ct_et/clt
+```
+
+
+```{r TablaTatsyFinal,results='asis',echo=FALSE}
+# CMA Medias moviles centradas
+a1<-insert(CMA[1:24],1,values=rep(NA_real_,6))
+a1<-insert(a1,31,values=rep(NA_real_,6))
+
+# StXet
+a2<-insert(st_et[1:24],1,values=rep(NA_real_,6))
+a2<-insert(a2,31,values=rep(NA_real_,6))
+
+# s barra
+a3<-rep(s,3)
+
+# s_t
+a4<-s_t
+
+a5<-tr_st # 1-36
+
+a6<-ct_et # 1-36
+
+# clt
+a7<-insert(clt[1:34],1,values=rep(NA_real_,1))
+a7<-insert(a7,36,values=rep(NA_real_,1))
+
+# et2-35
+
+a8<-insert(et[1:34],1,values=rep(NA_real_,1))
+a8<-insert(a8,36,values=rep(NA_real_,1))
+
+datosC<-data.frame(CMA=a1,stXet=a2,sBarra=a3,st=a4,trXst=a5,ctXet=a6,clt=a7,et=a8)
+colnames(datosC)<-c("$CMA_{t}$",
+                    "$s_{t} \\times \\epsilon_{t}$",
+                    "$\\bar{s}$",
+                    "$s_{t}$",
+                    "$ tr_{t} \\times s_{t} $",
+                    "$ cl_{t} \\times \\epsilon_{t} $",
+                    "$cl_{t}$",
+                    "$\\epsilon_{t}$")
+
+print(xtable(datosC,digits = 3,caption = "\\label{tab:TablaTatsyFinal} Estimaciones del algoritmo de descomposición"),comment=FALSE,sanitize.text.function=function(x){x})
+```
+
+
+Podemos así hacer un pronóstico para los siguientes doce meses, siguiendo el algoritmo creamos una función que calcula los pronósticos y su intervalo de predicción. Como el ciclo no está muy bien definido omitimos esa componente para hacer el pronóstico, el pronóstico se puede ver en el cuadro \ref{tab:tatsyAlgo10Pron}.
+
+Con los valores del cuadro \ref{tab:tatsyAlgo10Pron} en a parte de los intervalos de predicción notamos que están más ajustados que los que muestra [@bowerman_pronosticos_2007] y suponemos que es por que desde los valores de los intervalos de predicción para la tendencia ya sus intervalos son más amplios y es que su forma de calcularlos es más simplista que la que usa R para sus modelos lineales.
+
+
+
+
+```{r tatsyAlgo10Pron,results='asis',echo=TRUE}
+# 10 pronósticos
+#y_t<-tr_dt*st
+
+pronostico_dm<-function(li,ls,s_t,tr){
+  t=li:ls
+  s_t<-c(s_t,s_t)
+  sn_t<-s_t[li:ls]
+  
+  newdata<-data.frame(t)
+  tr_p<-predict(tr,newdata,interval="confidence",level=0.95)
+  #tr_p
+  
+  pron<-tr_p[,1]*sn_t
+  #pron
+  low<-tr_p[,2]
+  up<-tr_p[,3]
+  B<-(up-low)/2
+  #B # Para un nivel del 95
+  
+  in_sup<-pron+(B)
+  in_inf<-pron-(B)
+  #in_sup
+  #in_inf
+  
+  data.frame(mes=t,tendencia=tr_p[,1],estacionalidad=sn_t,estimacion=pron,
+             B95=B,limiteInf=in_inf,limiteSup=in_sup)
+}
+
+df<-pronostico_dm(37,48,s_t,tr)
+print(xtable(df,digits=3,caption = "\\label{tab:tatsyAlgo10Pron} Pronósticos"),comment=FALSE)
+```
+
+Ahora aplicamos el método de variables trigonométricas y vemos sus pronósticos en el cuadro \ref{tab:tatsyTrigo}, en el cual podemos notar que son mucho menores siempre que si usamos el método de descomposición. Lo cuál puede deberse a que se capta mejor la tendencia con la descomposición o bien por el hecho de que este nuevo método trabaja mejor con la estacionalidad creciente mientras que el anterior era necesario estabilizar y no es comprobable al cien por ciento de que dicha estabilización haga efecto. Ahora estamos suponiendo que el nuevo modelo es el que arroja los resultados correctos y bien podría ser al revés, pero por el ajuste y los valores que se observan parece más natural el nuevo modelo.
+
+```{r tatsyTrigo,results='asis',echo=FALSE}
+y<-read_excel("Tablas excel/Ejemplo 9.2.1..xlsx")
+y<-ts(y$Yt,frequency = 12)
+y<-log(y)
+It.trig=fourier(y,2)
+t<-1:(length(y))
+#datos<-data.frame(1:(length(y)),)
+mod2 <-lm(y~t+It.trig)
+
+
+Itp.f = fourier(y,2,12)
+prons.vt = predict(mod2,data.frame(t = (1:12), It.trig=I(Itp.f)),interval="confidence",level=0.95)
+print(xtable(prons.vt, digits = 6,caption = "\\label{tab:tatsyTrigo}Predicciónes para 12 meses de Tatsy Cola "),comment = FALSE)
+```
+
+
+\pagebreak
+\pagebreak
+
+
+## Actividad 9.4.1
+
+Cuadro comparativo entre los métodos Multiplicativo y Census II.
+
+|Método multiplicativo | Método Census II|
+  |----------|----------|
+  | Modela series con variación estacional (creciente o decreciente). | Trabaja con cualquier tipo de serie.|
+  | No ajusta efectos de calendario. | Ajusta la serie a las variaciones provocadas por efectos calendario.|
+  | La separación de componentes es mas detalla lo que la hace más precisa. | Separa los tres componentes y trata de separar la aleatoriedad en una primera fase. |
+  | Hace estimaciones de factores estacionales parecidas al Método Census II. Realizando estimaciones previas y finales precisas.| Empieza a estimar factores preliminares estacionales no muy precisas. |
+  | Utiliza estimaciones de estacionales previas para la estimación final. | Reajusta factores estacionales para mejorar la precisión.|
+  | Realiza estimaciones de tendencia, ciclo e irregular. | Realizar estimaciones de tendencia,ciclo e irregular.|
+  | No indica un método exacto para medir que tan bueno es, pero existen varios métodos matemáticos rigurosos que se pueden utilizar. | Realiza estadísticas de resumen que determinan que tan bueno es el modelo, las pruebas son poco rigurosas mas intuitivas.|
+  | Los pronósticos ofrecen intervalos de confianza. | No ofrece intervalos de confianza.|
+
+
+\pagebreak
+
+## Actividad 9.4.2
+
+ Ejercicios Hanke & Reitsch (1996)
+
+1. ¿Cuál es la finalidad de deflactar una serie histórica que está medida en dólares?  Eliminar el efecto de los cambios de precio.
+
+2. En el periodo base de junio de 1994, el precio de una cierta cantidad de bienes fue de 1 289.73. En los meses  más recientes, el precio índice para estos bienes fue 284.7. Cuál sería el costo de dichos bienes si se compraran en el último mes? Mediante la formula sabemos que poder de compra actual de 1 dólar $=\dfrac{1}{indice de precios actual}$ por lo que obtenemos que el poder de precio actual de 1 dólar = $.35247$. El dólar compraba aproximadamente un tercio de los bienes y servicios, obteniendo que el precio de ciertos bienes en los últimos meses fue de $ 3,659.12 el cual es mayor que en el precio base de junio de 1994.  
+
+3. Deflacte los siguientes volúmenes de ventas en dólares  utilizando los índices de precios de las mercancías que se muestran. Estos índices son para todas las mercancías con 1982 = 100
+
+Todos los volúmenes de ventas se deflactarón en términos de poder de compra de 1982, si realizamos una comparación entre los volúmenes reales de cada mes con su respectivo valor deflactado notamos que existe una brecha grande entre los valores. Debido a que en los volúmenes de venta deflactados podemos observar un valor máximo \$33,6416.60 correspondiente a Julio totalmente diferente al valor sin deflactar de $40,1345.00, lo cual se pudo deber al un aumento en las ventas así como una tendencia inflacionaria de la economía. En el cuadro \ref{tab:hanketabledeflac} podemos observar los valores deflactados de los volúmenes de ventas. 
+
+```{r hanketabledeflac,results='asis',fig.cap='Deflatación de datos',echo=FALSE}
+deflac <- read_excel("hanke 3.xlsx")
+dadeflac = deflac$Volumen*(100/deflac$indice)
+defla<-data.frame(deflac$Mes,deflac$Volumen,deflac$indice,dadeflac)
+
+colnames(defla)<-c("Mes","Volumen de ventas","Indice de precios","Volumen de ventas deflactados")
+print(xtable(defla,caption="\\label{tab:hanketabledeflac} Valores Deflactados"),comment=FALSE)
+
+```
+
+4. Explique el concepto de descomposición de una serie histórica. el análisis de series de tiempo comprende en identificar cada uno de los elementos que tienen influencia sobre cada uno de los valores periódicos de las series. Cada uno de estos elementos (tendencia, variaciones cíclicas, variaciones estacionales y fluctuaciones irregulares) se identifican de manera separada permitiendo que la serie pueda proyectarse a futuro y poder realizar pronósticos a corto o largo plazo.
+
+5. ¿Cuáles son los componentes que se analizan en la descomposición de una serie histórica anual? ¿Y de una mensual o trimestral? En una series histórica **anual** los componentes son: tendencia y las fluctuaciones cíclicas. En series de tiempo **mensuales  y trimestrales** son: tendencia, fluctuaciones cíclicas, irregulares y componente estacional.
+6. ¿Cuáles son las fuerzas básicas que afectan la tendencia secular de la mayoría de las variables? Cambios en la población, cambios de precios, tecnológicos, incrementos en la productividad y ciclos de vida de los productos.
+7. ¿Qué clase de modelo de tendencia debería utilizarse en cada uno de los siguientes casos?
+  - La variable se incrementa en una tasa constante. **Modelo exponencial** 
+  - La variable se incrementa en una tasa constante hasta que alcanza la saturación y se nivela. **Curva de Gompertz**
+  - La variable se incrementa en una cantidad constante. **Modelos lineales **
+  8. ¿Cuál es la fuerza básica que afecta el componente cíclico en la mayoría de las variables? Condiciones económicas cambiantes.
+
+10. Las estimaciones del servicio Value Line de las ventas y el crecimiento de ingresos de de compañías individuales se derivan mediante correlación con las ventas, ingresos y dividendos de los componentes correspondientes de las Cuentas Nacionales de Ingreso como gasto de capital. Un analista Value Line, Jason Black, está revisando la tendencia en la variable gasto de capital entre 1977 y 1993. Los datos son los siguientes:
+  
+  En la figura \ref{fig:graficaHankegastocap} podemos observar una tendencia lineal creciente, es decir, los datos van creciendo de una manera constante, debido a este comportamiento pensamos que un modelo lineal se ajustará de manera adecuada a los datos correspondiente a los gastos de capital. 
+
+```{r graficaHankegastocap,fig.cap="\\label{fig:graficaHankegastocap}Gráfica Gasto de Capital",echo=FALSE}
+gasto <- read_excel("Gasto de capital.xlsx")
+gastos <- ts(gasto$`Miles de millones`,start=1977)
+plot(gastos)
+```
+
+Una vez que decidimos que tipo de modelo se justará mejor proyectaremos la tendencia con ayuda de una regresión lineal para estimar los parámetros de la ecuación correspondiente a la forma: $y_{t}=\beta_{0}+\beta_{1}t$.
+
+```{r regresiongasto, echo=FALSE}
+num <- (1:17)
+regresion <- lm (gastos ~ num)
+regresion
+```
+
+Los coeficientes encontrados fueron:
+  - $\beta_{0} = 218.48$
+  - $\beta_{1} = 23.89$
+  
+  La proyección de la tendencia gráficamente se muestra en la figura \ref{fig:rafica_regresion}. Donde podemos notar que el ajuste lineal aunque algunos dato quedan un poco lejos de la lía roja (la proyección de la tendencia), gran parte de los datos se ajuntan de marea correcta al modelo lineal, por lo que creemos que este modelo podría producir predicciones decentes.
+
+```{r rafica_regresion, fig.cap='\\label{fig:rafica_regresion}Proyeccion de la tendencia',echo=FALSE}
+plot(num, gastos, xlab='Años', ylab='Gastos')
+abline(regresion,col="red")
+```
+
+Al ser el valor de $\beta_{1} = 23.89$ positiva  no indica que existe una tendencia ascendente en el gasto de capital, aumentando a un cambio o razón promedio de 23.89 miles de millones en gastos de capital. Tiene sentido esta razón ya que vemos un aumento elevado en el valor de $\beta_{1}$ además de que la serie se comporta de manera creciente.
+
+Ahora que tenemos todos los valores necesarios procedemos a realizar la estimación de la tendencia para el año 1994.
+
+```{r capitalprono,echo=FALSE}
+prono <- 218.48 + (23.89*18)
+prono
+```
+
+Realizando la comparación entre el pronóstico realizado por Value Line y el nuestro, observamos que su estimación es mas elevada que la nuestra, analizando el crecimiento de los valores reales como el crecimiento que tiene $\hat{y}$ nos hace pensar que nuestra predicción es mas certera que la realizada por Value. 
+
+En la siguiente cuadro \ref{tab:tendenciaprono}se muestran los valores de $\hat{y}$ así como el valor del coeficiente cíclico. 
+
+```{r tendenciaprono,results='asis',fig.cap='Tabla de gasto capital 1992-1993',echo=FALSE}
+
+t <- 1:17
+tendencia <- c()
+for(i in 1:17){
+  tendencia [i] <- 218.48 + (23.89*i)
+}
+
+comesta <- c()
+for(i in t){
+  comesta [i] <- (gastos[i]/(tendencia [i]))*100
+}
+
+capital<-data.frame(gasto$Año,gastos,t,tendencia,comesta)
+
+colnames(capital)<-c("Año","Miles de millones","t","Predicción de tendencia","Componente cíclico")
+print(xtable(capital,caption="\\label{tab:tendenciaprono} Tabla de gasto capital 1992-1993"),comment=FALSE)
+```
+
+14. Suponga que los siguientes índices estacionales específicos para el mes de marzo e basan en el método de proporción de promedio móvil. $102.2$,$105.9$,$114.3$,$122.4$,$109.8$,$98.9$.
+
+Basándonos en el procedimiento que realiza el libro en el ejemplo 8.6, utilizando el método de la media modificada la cual necesita de los valores del mismo mes en los diferentes años. Tomaremos los valores que nos dan como dichos valores. 
+
+```{r proceindice, echo=TRUE}
+
+# Eliminando los valores extremos quedan los datos:
+#  102.2 105.9 114.3 109.8
+
+#Procedemos a sacar promedio de los datos resultantes.
+prom <- mean(c(102.2,105.9,114.3,109.8))
+prom
+```
+
+Podemos notar que el aporte de Marzo es un 8% más en la actividad total. 
+
+15. El valor esperado de la tendencia para octubre es de $850. Suponiendo un índice estacional de 112 para el mes de octubre. ¿Cuál sería el pronóstico para octubre?
+  
+  Primeramente dividiremos el índice estacional entre 100, dando como resultado $1.12$, posteriormente utilizaremos la formula $\hat{y} = TS$, realizando la operación nos da como pronóstico para octubre $\hat{y} = 952$
+
+
+
+## Actividad 9.4.3
+
+Del Banco de Información Económica (INEGI, 2015a) ingrese a indicadores económicos de coyuntura, producto interno bruto trimestral base 2013, series originales, valores a precios de 2013, actividades primarias y exporte la serie 11 agricultura, cría y explotación de animales, aprovechamiento forestal, pesca y caza. 
+Obtenga la serie original corregida por efectos del calendario, la serie desestacionalizada y la serie tendencia-ciclo. Compare sus resultados con los que ofrece el INEGI
+
+```{r PIBbase2013,fig.cap="\\label{fig:ActPrimariasSerie} PIB base 2013 Actividades económicas primarias",echo=FALSE}
+yorg<-read_excel("Tablas excel/BIE_BIE20210612195510.xlsx")
+y<- ts(yorg$Dato)
+plot(y)
+```
+
+
+En la figura \ref{fig:ActPrimariasSerie} vemos la gráfica de la serie de tiempo
+del PIB base 2013 de las actividades económicas primarias de los primeros cuatro meses de cada año desde 1980 hasta enero del 2021. 
+Podemos ver que la serie tiene tendencia ascendente y aunque en los primeros meses es un poco difícil notar la estacionalidad que tiene la serie, cuando se acerca a los cincuenta, podemos ver que el comportamiento se repite cada cuatro puntos; es decir, tiene estacionalidad anual.
+
+Procedemos a realizar el ajuste por efectos de calendario en una hoja de cálculo pues de esta manera nos pareció sería mas sencillo.
+
+
+![Serie ajustada PIB base 2013](Tablas excel/PIB_base_2013.PNG)
+
+En la figura \ref{fig:ActPrimariasSerieAjustada} podemos ver como se ve la serie ajustada gráficamente. Al haber eliminado la variaciones de calendario, notamos con mayor facilidad la estacionalidad de la serie. 
+
+```{r PIBbase2013ajustada,fig.cap="\\label{fig:ActPrimariasSerieAjustada} Serie ajustada del PIB base 2013 Actividades economicas primarias",echo=FALSE}
+w<-read_excel("Tablas excel/PIB base 2013 actividades economicas primarias  AJUSTADA.xlsx")
+w<- ts(w$Dato)
+plot(w)
+```
+
+
+Ahora, tomando la serie ajustada obtendremos la serie desestacionalizada.  Decidimos tomar la serie ajustada y no la original pensando que al no tener las variaciones por efecto de calendario será mas fácil notar la tendencia de la serie.
+
+
+```{r PIBbase2013ajustadadesestacionalizada,fig.cap="\\label{fig:ActPrimariasSerieAjustadaDesestacionalizada} Serie ajustada desestacionalizada del PIB base 2013 Actividades economicas primarias",echo=FALSE}
+L=4
+mm<-rollmean(w,4,align="center")
+CMA<-rollmean(mm,2,align = "right")
+
+st_et<-w[3:163]/CMA
+
+fun_estacional<-function(var){
+  s<-c()
+  for (i in 1:L){
+    cont<-0
+    s[i]<-0
+    for (j in 1:length(var) ){
+      u_star<-start(var)[1] # en que mes empieza
+      mes<- (j+u_star-1)%%4
+      if(mes==0){
+        mes=4
+      }
+      if(mes==i){
+        s[i]<-s[i]+var[j]
+        cont<- cont+1
+      }
+    }
+    s[i]<-s[i]/cont
+  }
+  s
+}
+
+s<-fun_estacional(st_et)
+m<-L/sum(s)
+
+s_t<-s*m
+
+s_t<-c(rep(s_t,41),s_t[1]) # Para hacerlo repetido y más grande
+
+d<-w/s_t
+plot(d)
+
+```
+
+
+En la figura \ref{fig:ActPrimariasSerieAjustadaDesestacionalizada} podemos ver como se ve gráficamente la serie ajustada una vez desestacionalizada. 
+Haciendo una comparación con la gráfica de la serie original podemos decir que ha mejorado el comportamiento (la varianza es más uniforme) y la escala ha disminuido. Algunos de nosotros esperábamos obtener una gráfica con menos variaciones (una linea casi recta con la tendencia de la serie) pero después de hablarlo un rato concluimos que el que nuestra gráfica mantenga un comportamiento muy parecido al de la serie es mejor, de otra manera sería más difícil pronosticar.
+
+La serie tendencia-ciclo mostrada en la figura \ref{fig:SerieTendenciaCicloActPrimarias} muestra de manera mas 'limpia' el comportamiento de la tendencia de la serie, el cual es ascendente y podemos notar un claro suavizamiento de la varianza. 
+
+
+```{r PIBbase2013tendenciaCiclo,fig.cap="\\label{fig:SerieTendenciaCicloActPrimarias} Serie tendencia-ciclo del PIB base 2013 Actividades económicas primarias",echo=FALSE}
+plot(CMA)
+```
+
+Comparando las series de tiempo y sus gráficas podemos ver como el comportamiento de cada una mejora y se estabiliza la varianza.
+
+\pagebreak
+\pagebreak
+
+
+# Descomposición aditiva 
+
+## Ejemplo 9.3.1
+
+Como se  pudo observar en la figura \ref{fig:graficaComercio} correspondiente a la Actividad 9.3.3 existe una estacionalidad anual creciente. 
+```{r graficaComercioadit, echo=FALSE}
+  
+dataset <- read_excel("Comercio al por menor.xlsx")
+comercio <- ts(dataset$Dato,frequency=12)
+```
+
+Procedemos a aplicar el método de descomposición aditiva. En el cuadro \ref{tab:cuadrofinaladitiv} podemos observar los valores de las medias móviles.
+
+```{r calculoedmovilmen, echo=TRUE}
+#1. Calculamos las medias moviles
+mm<-rollmean(comercio,12,align="center")
+CMA<-rollmean(mm,2,align = "right")
+# CMA = tr + c
+```
+
+Entonces podemos a calcular la suma del componente estacional y aleatoria como lo siguiente $s_{t} + \epsilon_{t}= y_{t} - CMA_{t}$. Además sabemos que al momento de aplicar las medias móviles con estacionalidad anual observamos la perdida de 6 valores al inicio de la serie y 6 valores al final de la misma. En el cuadro \ref{tab:cuadrofinaladitiv} se observa el valor de la suma del componente estacional y aleatoria.
+
+```{r calculoestaditiv, echo=TRUE}
+# 2
+st_et<-comercio - CMA
+
+```
+
+Procedemos a realizar el calculo del factor estacional. Utilizando la formula a la dada en el material dado que en el libro [@bowerman_pronosticos_2007] indica un calculo diferente para m al de las notas de clase dado que $m = \dfrac{\sum_{t=1}^{L} \bar{s}}{L}$ lo que da por consecuencia que la $\sum s_{t} = 0$. Debido a que al momento de aplicar la fórmula dada por el material de clase no se cumplía la condición de $\sum s_{t} = 0$ caso contrario al utilizar la fórmula de [@bowerman_pronosticos_2007] la suma es muy cercana a cero. En el cuadro \ref{tab:cuadrofinaladitiv} se observa el valor de la componente estacional.
+
+```{r calculofacesta, echo=TRUE}
+# 3
+
+## a)
+L=12
+
+fun_estacional<-function(var){
+  s<-c()
+  for (i in 1:L){
+    cont<-0
+    s[i]<-0
+    for (j in 1:length(var) ){
+      u_star<-start(var)[1] # en que mes empieza
+      mes<- (j+u_star-1)%%12
+      if(mes==0){
+        mes=12
+      }
+      if(mes==i){
+        s[i]<-s[i]+var[j]
+        cont<- cont+1
+      }
+    }
+    s[i]<-s[i]/cont
+  }
+  s
+}
+
+s<-fun_estacional(st_et)
+
+## b)
+
+m<-sum(s)/L
+
+## c)
+
+s_t<-s - m
+
+```
+
+Procedemos a desestacionalizar la serie. Por lo que podemos ver en la gráfica \ref{fig:desestaciona} podemos observar que la estacionalidad no desaparece de manera notoria para proponer un modelo lineal ya que seguimos observando esta estacionalidad anual por lo que será complicado un modelo para la tendencia que se ajuste a la serie. 
+
+```{r desestaciona, fig.cap="\\label{fig:desestaciona} Gráfica de la serie desestacionalizada " ,echo=TRUE}
+
+# 4
+s_t<-rep(s_t,13) # Para hacerlo repetido y más grande
+s_t[157] = s_t[1] 
+s_t[158] = s_t[2]
+s_t[159] = s_t[3]
+
+d<-comercio - s_t
+plot(d)
+```
+
+Proponemos un modelo lineal cúbico el cual pensamos que se ajustará de una manera correcta a la tendencia. El en cuadro \ref{tab:modelcuadraticomenor} se pueden observar los valores del modelo los cuales son significativos correspondientes a la parte cuadrática y cubica, en el modelo no se incluye la parte lineal  ya que arroja no significancia para el mismo por lo cual se opta quitarla del modelo.
+
+```{r modelcuadraticomenor, results='asis', echo=TRUE}
+# 5 
+t<-1:length(d)
+t2 <- t^2
+t3 <- t^3
+datos<-data.frame(t,t2,t3,d)
+tr<-lm(d~t2+t3,datos)
+
+print(xtable(tr,digits = 3, caption = "\\label{tab:modelcuadraticomenor} Modelo cúbico de la proyección de la tendencia"), comment = FALSE)
+```
+
+Procedemos a calcular $tr_{t} + s_{t}$ y $c_{t} + \epsilon_{t}$, ya que son necesarios para poder calcular la componente cíclica y el error aleatorio. Los valores correspondientes a cada uno los podemos encontrar en el cuadro \ref{tab:cuadrofinaladitiv}
+
+```{r calculosMenor&y7, echo=TRUE}
+
+# 6 tr*s_t
+
+tr_st<-tr$fitted.values + s_t
+
+# 7
+
+ct_et<-comercio - tr_st
+
+```
+
+Procedemos a calcular la componente cíclica mediante un promedio movil de $c_{t} + \epsilon_{t}$ mediante una media móvil centrada asi como la estimación de $\epsilon$ mediante $\epsilon_{t}= (c_{t} + \epsilon_{t})- c_{t}$. Los valores podemos verlos en el cuadro \ref{tab:cuadrofinaladitiv}.
+
+```{r calculosMenor8y7, echo=TRUE}
+# 8
+
+clt<-rollmean(ct_et,3,align="center")
+
+
+# 9
+
+et<-ct_et - clt
+```
+
+```{r cuadrofinaladitiv, results='asis', echo=FALSE}
+
+# CMA Medias moviles centradas
+a1<-insert(CMA[1:147],1,values=rep(NA_real_,6))
+a1<-insert(a1,154,values=rep(NA_real_,6))
+
+# StXet
+a2<-insert(st_et[1:147],1,values=rep(NA_real_,6))
+a2<-insert(a2,154,values=rep(NA_real_,6))
+
+# s barra
+a3<-rep(s,13)
+a3[157] = s[1]
+a3[158] = s[2]
+a3[159] = s[3]
+
+# s_t
+a4<-s_t
+
+a5<-tr_st # 1-36
+
+a6<-ct_et # 1-36
+
+# clt ,  et2-35
+
+a7<-insert(clt[1:157],1,values=rep(1,1))
+a7<-insert(a7,158,values=rep(1,1))
+a8<-insert(et[1:157],1,values=rep(1,1))
+a8<-insert(a8,158,values=rep(1,1))
+
+datosC<-data.frame(CMA=a1,stXet=a2,sBarra=a3,st=a4,trXst=a5,ctXet=a6,clt=a7,et=a8)
+colnames(datosC)<-c("$CMA_{t}$",
+                    "$s_{t} + \\epsilon_{t}$",
+                    "$\\bar{s}$",
+                    "$s_{t}$",
+                    "$ tr_{t} + s_{t} $",
+                    "$ cl_{t} + \\epsilon_{t} $",
+                    "$cl_{t}$",
+                    "$\\epsilon_{t}$")
+
+print(xtable(datosC[1:50,],digits = 3,caption = "\\label{tab:cuadrofinaladitiv} Estimaciones del algoritmo de descomposición"),comment=FALSE,sanitize.text.function=function(x){x})
+
+```
+
+Una vez calculado cada componente se procede a realizar el pronóstico a 12 meses tanto con el modelo multiplicativo como el aditivo , lo cual nos permitirá realizar la comparación de ambos modelos. En le cuadro \ref{tab: pronomenoraditivi} observamos los valores del pronóstico a un año.
+
+```{r pronomenoraditivi, results='asis', echo=TRUE}
+# 10 pronósticos
+#y_t<-tr_dt*st
+
+pronostico_da<-function(li,ls,s_t,tr){
+  t=li:ls
+  s_t<-c(s_t,s_t)
+  sn_t<-s_t[li:ls]
+  t2 <- t^2
+  t3 <- t^3
+  
+  newdata<-data.frame(t,t2,t3)
+  tr_p<-predict(tr,newdata,interval="confidence",level=0.95)
+  #tr_p
+  
+  pron<-tr_p[,1]+sn_t
+  #pron
+  low<-tr_p[,2]
+  up<-tr_p[,3]
+  B<-(up-low)/2
+  #B # Para un nivel del 95
+  
+  in_sup<-pron+(B)
+  in_inf<-pron-(B)
+  #in_sup
+  #in_inf
+  
+  data.frame(mes=t,tendencia=tr_p[,1],estacionalidad=sn_t,estimacion=pron,
+             B95=B,limiteInf=in_inf,limiteSup=in_sup)
+}
+
+pronos <- pronostico_da(160,172,s_t,tr)
+
+print(xtable(pronos, digits = 3, caption = "\\label{tab: pronomenoraditivi} Pronóstico del modelo aditivo"), comment=FALSE)
+
+```
+
+
+Realizamos el modelo por descomposición multiplicativa como se hizo en la sección anterior
+y presentamos los resultados en el cuadro \ref{tab:modMultiEjemploAdit}
+
+```{r modMultiEjemploAdit, results='asis',echo=FALSE}
+y=comercio
+#1. Calculamos las medias moviles
+mm<-rollmean(y,12,align="center")
+CMA<-rollmean(mm,2,align = "right")
+# 2
+st_et<-y[7:(length(y)-6)]/CMA
+# 3
+## a)
+L=12
+fun_estacional<-function(var){
+  s<-c()
+  for (i in 1:L){
+    cont<-0
+    s[i]<-0
+    for (j in 1:length(var) ){
+      u_star<-start(var)[1] # en que mes empieza
+      mes<- (j+u_star-1)%%12
+      if(mes==0){
+        mes=12
+      }
+      if(mes==i){
+        s[i]<-s[i]+var[j]
+        cont<- cont+1
+      }
+    }
+    s[i]<-s[i]/cont
+  }
+  s
+}
+
+s<-fun_estacional(st_et)
+
+## b)
+
+m<-L/sum(s)
+
+## c)
+
+s_t<-s*m
+
+
+# 4
+s_t<-rep(s_t,13) # Para hacerlo repetido y más grande
+s_t[157] = s_t[1] 
+s_t[158] = s_t[2]
+s_t[159] = s_t[3]
+
+d<-y/s_t
+
+t<-1:length(d)
+datos<-data.frame(t,d)
+tr<-lm(d~t,datos)
+
+# 6
+tr_st<-tr$fitted.values * s_t
+# 7
+ct_et<-y/tr_st
+# 8
+clt<-rollmean(ct_et,3,align="center")
+# 9
+et<-ct_et/clt
+
+c<-insert(clt[1:157],1,values=rep(1,1))
+c<-insert(c,158,values=rep(1,1))
+e1<-insert(et[1:157],1,values=rep(1,1))
+e1<-insert(e1,158,values=rep(1,1))
+
+pronos_dm <- pronostico_dm(160,175, s_t, tr)
+
+print(xtable(pronos_dm, digits = 3, caption = "\\label{tab:modMultiEjemploAdit} Pronóstico del modelo multiplicativo"), comment=FALSE)
+```
+
+Como podemos observar en los cuadros \ref{tab:modMultiEjemploAdit} y en el cuadro \ref{tab: pronomenoraditivi} donde se visualizan los pronósticos de cada modelo, notamos que los pronósticos del método multiplicado son mas elevados comparados con el aditivo, aunque los intervalos de confianza del método multiplicativo se mantienen a una distancia aproximada de 10 unidades una diferencia notable con los intervalos de confianza del método aditivo los cuales se mantienen separados por 10 unidades, por lo que elegimos el método aplicativo para esta serie. 
+
+
+\clearpage
+
+## Actividad 9.5.6
+
+En la figura \ref{fig:stlLoesMet} se presenta la serie de producción de petroleo
+crudo en México desde 2017 hasta 2021 con una linea roja que es el ajuste hecho
+por la regresión *Loess*. Como podemos ver es un buen ajuste el que ofrece la regresión y en está se basa el procedimiento *STL* para descomposición de
+series de tiempo, que lo que hace es aplica de forma iterada la regresión Loess a la serie de tiempo para  poder separarla.
+
+```{r stlLoesMet,fig.cap="\\label{fig:stlLoesMet} Producción de petroleo",echo=FALSE}
+petroleo<-read_excel("Tablas excel/Producción de petroleo.xlsx")
+y<-ts(petroleo$`ducción petroleo`,start=2017,freq=12)
+
+yw<-loess(y ~ time(y))
+np = length(y)
+fecha = seq(as.Date("2017/01/01"), as.Date("2021/04/01"),
+            by="months")
+fechas = strptime(as.character(fecha), "%Y-%m-%d")
+plot(fechas,y, xaxt="n",panel.first = grid(),type='l',ylab='')
+axis.POSIXct(1, at=seq(as.Date(fechas[1]),as.Date(fechas[np]),
+                       "months"), format="%m/%y")
+axis.POSIXct(1, at=seq(as.Date(fechas[1]),as.Date(fechas[np]),
+                       "years"), labels = FALSE, tcl = -0.2)
+lines(fechas,yw$fitted, xaxt="n", panel.first = grid(),
+      type='l',col='red',lwd=2)
+
+```
+
+
+En la figura \ref{fig:serieDescompuestastl} se puede ver la descomposición de la serie con el método antes mencionado. El software *R* nos ofrece de forma nativa la función **stl** para descomponer la serie, los dos parámetros importantes son **t.window** que es para la tendencia y **s.window** que es para la estacionalidad.
+Estos valores se refieren a la cantidad de datos contiguos que se tomaran para la regresión que tiene parámetros variables de acuerdo al tiempo, así que si $t.window=13$ significa que usaremos siempre 13 meses para poder separar la tendencia con la regresión y $s.window=1$ es por que solo tomaremos un año de observaciones para separar la estacionalidad. Es un método algo laborioso y con su respectiva curva de aprendizaje, de hecho no lo entendimos del todo pero por suerte R tiene documentación muy clara para usar su función para que no solo sea aplicar la función y ya sino entenderla al menos en un aspecto superficial pero suficiente para saber lo que estamos haciendo.
+
+```{r serieDescompuestastl,fig.cap="\\label{fig:serieDescompuestastl} Descomposición de la serie de Producción de petroleo",echo=TRUE}
+u<-stl(y,t.window=12, s.window=1, robust=TRUE)
+plot(u)
+```
+
+
+
+\pagebreak
+
+## Actividad 9.5.7
+
+### Ejercicio 7.2
+
+En la figura \ref{fig:lecturaSerieOligopoly} se aprecia la gráfica de la serie de Oligopoly donde hay una aparente estacionalidad anual. Los cálculos se replicarán de los ejercicios anteriores y mostraremos las salidas para ver la respuesta a los incisos.
+
+```{r lecturaSerieOligopoly,fig.cap="\\label{fig:lecturaSerieOligopoly} Oligopoly",echo=FALSE}
+y<-c(20,25,35,44,28,29,43,48,24,37,39,56)
+y<-ts(y,freq=4)
+plot(y)
+```
+
+
+```{r modMultiplicativoOligopoli,,echo=FALSE}
+#1. Calculamos las medias moviles
+mm<-rollmean(y,4,align="center")
+CMA<-rollmean(mm,2,align = "right")
+# 2
+st_et<-y[3:(length(y)-2)]/CMA
+# 3
+## a)
+L=4
+fun_estacional<-function(var,L){
+  s<-c()
+  for (i in 1:L){
+    cont<-0
+    s[i]<-0
+    for (j in 1:length(var) ){
+      u_star<-start(var)[1] # en que mes empieza
+      mes<- (j+u_star-1)%%L
+      if(mes==0){ # Mes o trimestre
+        mes=L
+      }
+      if(mes==i){
+        s[i]<-s[i]+var[j]
+        cont<- cont+1
+      }
+    }
+    s[i]<-s[i]/cont
+  }
+  s
+}
+
+s<-fun_estacional(st_et,L)
+
+## b)
+
+m<-L/sum(s)
+
+## c)
+
+s_t<-s*m
+
+
+# 4
+s_t<-rep(s_t,3) # Para hacerlo repetido y más grande
+
+d<-y/s_t
+
+t<-1:length(d)
+datos<-data.frame(t,d)
+tr<-lm(d~t,datos)
+
+# 6
+tr_st<-tr$fitted.values * s_t
+# 7
+ct_et<-y/tr_st
+# 8
+clt<-rollmean(ct_et,3,align="center")
+# 9
+et<-ct_et/clt
+
+# Pronostico
+pronostico_dm<-function(li,ls,s_t,tr){
+  t=li:ls
+  s_t<-c(s_t,s_t)
+  sn_t<-s_t[li:ls]
+  
+  newdata<-data.frame(t)
+  tr_p<-predict(tr,newdata,interval="confidence",level=0.95)
+  #tr_p
+  
+  pron<-tr_p[,1]*sn_t
+  #pron
+  low<-tr_p[,2]
+  up<-tr_p[,3]
+  B<-(up-low)/2
+  #B # Para un nivel del 95
+  
+  in_sup<-pron+(B)
+  in_inf<-pron-(B)
+  #in_sup
+  #in_inf
+  
+  data.frame(mes=t,tendencia=tr_p[,1],estacionalidad=sn_t,estimacion=pron,
+             B95=B,limiteInf=in_inf,limiteSup=in_sup)
+}
+
+pronos_dm <- pronostico_dm(13,16, s_t, tr)
+
+#print(xtable(pronos_dm, digits = 3, caption = "\\label{tab:modMultiEjemploAdit} Pronóstico del modelo multiplicativo"), comment=FALSE)
+```
+
+En la tabla \ref{tab:OligopolyParte1} observamos las respuestas a los incisos *a-e* de izquierda a derecha en el orden que el libro indica.
+
+```{r OligopolyParte1,results='asis',echo=FALSE}
+## mm
+a0<-insert(mm[1:length(mm)],1,values=NA_real_)
+a0<-insert(a0,11,values=rep(NA_real_,2))
+# CMA Medias moviles centradas
+a1<-insert(CMA[1:length(CMA)],1,values=rep(NA_real_,2))
+a1<-insert(a1,11,values=rep(NA_real_,2))
+
+# StXet
+a2<-insert(st_et[1:length(st_et)],1,values=rep(NA_real_,2))
+a2<-insert(a2,11,values=rep(NA_real_,2))
+
+# s_t
+a4<-s_t
+
+ae<-d
+
+tabla<-data.frame(a0,a1,a2,a4,ae)
+colnames(tabla)<-c( "$MM$",
+                    "$CMA_{t}$",
+                    "$s_{t} \\times \\epsilon_{t}$",
+                    "$s_{t}$",
+                    "$desestacionalizada$"
+                    )
+print(xtable(tabla,digits = 3,caption = "\\label{tab:OligopolyParte1} Parte 1 de cálculos Oligopoly"),comment=FALSE,sanitize.text.function=function(x){x})
+```
+
+En la figura \ref{fig:oligopolyParte1Sdeses} se ve la gráfica de la serie desestacionalizada en respuesta al inciso *f*.
+
+```{r oligopolyParte1Sdeses,fig.cap="\\label{fig:oligopolyParte1Sdeses} Serie desestacionalizada",echo=FALSE}
+plot(d)
+```
+
+Los resultados para el modelo lineal son $\beta_{0}=23.860$ y $\beta_{1}=2.332$ en respuesta al ejercicio *g*.
+
+Para responder el ejercicio *h* podemos fijarnos en el cuadro \ref{tab:ejeHolygopoly} en el que se ve la estimación que es el pronóstico y los intervalos de confianza. Se realizo con la misma función que hemos manejado pero se coloco un vector de estacionalidad con solo unos para no contar dicho factor.
+
+```{r ejeHolygopoly,results='asis',echo=FALSE}
+pronos_dm <- pronostico_dm(13,16, rep(1,12), tr)
+print(xtable(pronos_dm, digits = 3, caption = "\\label{tab:ejeHolygopoly} Pronóstico del modelo multiplicativo(solo tendencia)"), comment=FALSE)
+```
+
+En el cuadro \ref{tab:parte2Oligopoly} vemos las respuestas a los ejercicios *i,j,k*. En respuesta al inicios *l* podemos decir que no encontramos patrones cíclicos aparentes.
+
+```{r parte2Oligopoly,results='asis',echo=FALSE}
+a6<-ct_et # 1-36
+
+# clt
+a7<-insert(clt[1:length(clt)],1,values=rep(NA_real_,1))
+a7<-insert(a7,12,values=rep(NA_real_,1))
+
+# et2-35
+
+a8<-insert(et[1:length(et)],1,values=rep(NA_real_,1))
+a8<-insert(a8,12,values=rep(NA_real_,1))
+
+tabla2<-data.frame(a6,a7,a8)
+colnames(tabla2)<-c("$ cl_{t} \\times \\epsilon_{t} $",
+                    "$cl_{t}$",
+                    "$\\epsilon_{t}$")
+print(xtable(tabla2,digits = 3,caption = "\\label{tab:parte2Oligopoly} Parte 2 de cálculos Oligopoly"),comment=FALSE,sanitize.text.function=function(x){x})
+```
+
+En respuesta a los incisos *m* y *n* mostramos el cuadro \ref{tab:oligopolyPronfin} que muestra el pronóstico usando tanto a la tendencia como a la estacionalidad
+
+
+```{r oligopolyPronfin,results='asis',echo=FALSE}
+pronos_dm <- pronostico_dm(13,16, st_et, tr)
+print(xtable(pronos_dm, digits = 3, caption = "\\label{tab:oligopolyPronfin} Pronóstico del modelo multiplicativo"), comment=FALSE)
+```
+
+
+\clearpage
+
+### Ejercicio 7.4
+
+Realizamos el el análisis para la serie de Oligopoly con el método aditivo y obtuvimos los resultados
+que se muestran en el cuadro \ref{tab:oligopolyAditivoCuad}. El cual nos sirve como un tipo de referencia en comparación a los otros valores pero no nos dice mucho, lo que nos ayudará a ver como se comporta es a la hora de hacer predicciones y ver cual método tiene intervalos de confianza menos grandes para, de esa forma optaríamos por el modelo con intervalos de confianza más pequeña por que con eso tendríamos más certidumbre.
+Los pronósticos se pueden ver el cuadro \ref{tab:pronoAditivOligopoly}.
+
+Con lo visto con los pronósticos y como se comportan de manera muy diferente con intervalos de confianza en ambas situaciones demasiado grandes que los dos modelos son malos pero que el segundo(aditivo) es ligeramente mejor.
+
+```{r oligopolyAditivoCuad,results='asis',echo=FALSE}
+#1. Calculamos las medias moviles
+mm<-rollmean(y,4,align="center")
+CMA<-rollmean(mm,2,align = "right")
+# CMA = tr + c
+
+# 2
+st_et<-y - CMA
+# 3
+
+## a)
+L=4
+
+fun_estacional<-function(var){
+  s<-c()
+  for (i in 1:L){
+    cont<-0
+    s[i]<-0
+    for (j in 1:length(var) ){
+      u_star<-start(var)[1] # en que mes empieza
+      mes<- (j+u_star-1)%%L
+      if(mes==0){
+        mes=L
+      }
+      if(mes==i){
+        s[i]<-s[i]+var[j]
+        cont<- cont+1
+      }
+    }
+    s[i]<-s[i]/cont
+  }
+  s
+}
+
+s<-fun_estacional(st_et)
+## b)
+m<-sum(s)/L
+## c)
+s_t<-s - m
+# 4
+s_t<-rep(s_t,3) # Para hacerlo repetido y más grande
+d<-y - s_t
+# 5 
+t<-1:length(d)
+datos<-data.frame(t,d)
+tr<-lm(d~t,datos)
+# 6 tr*s_t
+tr_st<-tr$fitted.values + s_t
+# 7
+ct_et<-y - tr_st
+# 8
+clt<-rollmean(ct_et,3,align="center")
+# 9
+
+et<-ct_et - clt
+
+# Cuadro
+a0<-insert(mm[1:length(mm)],1,values=NA_real_)
+a0<-insert(a0,11,values=rep(NA_real_,2))
+# CMA Medias moviles centradas
+a1<-insert(CMA[1:length(CMA)],1,values=rep(NA_real_,2))
+a1<-insert(a1,11,values=rep(NA_real_,2))
+
+# StXet
+a2<-insert(st_et[1:length(st_et)],1,values=rep(NA_real_,2))
+a2<-insert(a2,11,values=rep(NA_real_,2))
+
+# s_t
+a4<-s_t
+
+a5<-tr_st
+
+a6<-ct_et # 1-36
+
+# clt
+a7<-insert(clt[1:length(clt)],1,values=rep(NA_real_,1))
+a7<-insert(a7,12,values=rep(NA_real_,1))
+
+# et2-35
+
+a8<-insert(et[1:length(et)],1,values=rep(NA_real_,1))
+a8<-insert(a8,12,values=rep(NA_real_,1))
+
+datosC<-data.frame(a1,a2,a4,a5,a6,a7,a8)
+# Mod latex
+colnames(datosC)<-c("CMA",
+                    "st_et",
+                    "st",
+                    "tr_st",
+                    "cl_et",
+                    "cl",
+                    "et")
+# MOd latex
+colnames(datosC)<-c("$CMA_{t}$",
+                    "$s_{t} + \\epsilon_{t}$",
+                    "$s_{t}$",
+                    "$ tr_{t} + s_{t} $",
+                    "$ cl_{t} + \\epsilon_{t} $",
+                    "$cl_{t}$",
+                    "$\\epsilon_{t}$")
+
+print(xtable(datosC,digits = 3,caption = "\\label{tab:oligopolyAditivoCuad} Cálculos del método de aditividad"),comment=FALSE,sanitize.text.function=function(x){x})
+```
+
+
+
+```{r pronoAditivOligopoly,results='asis',echo=FALSE}
+pronostico_da<-function(li,ls,s_t,tr){
+  t=li:ls
+  s_t<-c(s_t,s_t)
+  sn_t<-s_t[li:ls]
+  t2 <- t^2
+  t3 <- t^3
+  
+  newdata<-data.frame(t,t2,t3)
+  tr_p<-predict(tr,newdata,interval="confidence",level=0.95)
+  #tr_p
+  
+  pron<-tr_p[,1]+sn_t
+  #pron
+  low<-tr_p[,2]
+  up<-tr_p[,3]
+  B<-(up-low)/2
+  #B # Para un nivel del 95
+  
+  in_sup<-pron+(B)
+  in_inf<-pron-(B)
+  #in_sup
+  #in_inf
+  
+  data.frame(mes=t,tendencia=tr_p[,1],estacionalidad=sn_t,estimacion=pron,
+             B95=B,limiteInf=in_inf,limiteSup=in_sup)
+}
+
+pronos <- pronostico_da(13,16,s_t,tr)
+
+print(xtable(pronos, digits = 3, caption = "\\label{tab:pronoAditivOligopoly} Pronóstico del modelo aditivo"), comment=FALSE)
+```
+
+\clearpage
+
+
+
+# Procedimientos recursivos de estimación
+
+## Actividad 9.6
+
+En el Banco de información económica (INEGI, 2015a), ubíquese en el rubro
+Encuesta nacional de empresas constructoras, índices por entidad federativa,
+índice de personal ocupado, total nacional. Modele la serie en cuestión con alguno
+de los métodos vistos en la sección y compruebe la hipótesis de estabilidad
+estructural
+
+En la figura \ref{fig:graficapersonalocup} podemos observar una tendencia así como una estacionalidad anual decrecientes. Decidimos aplicar el uso de variables indicadoras debido a que estamos siguiendo paso a paso la explicación de libro de [@giraldo_gomez_estadistica_nodate], aunque debido a que podemos observar una tendencia decreciente podemos usar método aditivo así como el multiplicativo.
+
+```{r graficapersonalocup, fig.cap= "\\label{fig:graficapersonalocup} Gráfica de la serie Índice personal ocupado"}
+datatest <- read_excel("Tablas excel/Indice personal ocupado.xlsx")
+y <-ts(datatest$Dato, frequency = 12)
+plot(y)
+```
+
+Procedemos a calcular la estimación de los parámetros, usando variables indicadoras. Una vez calculados los parámetros en diferentes tiempos podremos verificar de una manera más a fondo si no cambian mediante avanzan en el tiempo o si van cambiando conforme pasa un lapso de tiempo. Además en la gráfica \ref{fig:GraficasdifperA} podemos observar que no existe una diferencia notable en los coeficientes de los parámetros en diferentes periodos de tiempo, al menos en una primera observación entre las gráficas hay una diferencia de 70 unidades de tiempo, un periodo de tiempo considerable que nos hace pensar que hay estabilidad estructural.
+
+
+```{r calculoparapobla, echo=TRUE}
+t = seq(1,length(y))
+It = seasonaldummy(y)
+s = 13
+
+k = 2+s-1+10
+n = length(y)-k
+parm = mat.or.vec(n,s)
+  for(j in 1:n){
+    yj = y[1:(k+j)]
+    tj = t[1:(k+j)]
+    Itj = It[1:(k+j),]
+    mod.j = lm(yj ~ tj + Itj)
+    parm[j,] = t(mod.j$coefficient)
+  }
+```
+
+
+```{r GraficasdifperA,out.width='45%',fig.cap="Gráficas de coeficientes",fig.subcap=c("Coeficientes para parámetros para k+2 datos","Coeficientes para parámetros para k+79 datos"),echo=FALSE}
+plot.ts(parm[2,])
+plot.ts(parm[79,])
+```
+
+
+Con pruebas en los residuales,enfocándonos en la prueba CUSUM. La cual indica una hipótesis nula (hay estabilidad estructural) que nosotros creemos no se rechaza contra la hipótesis alternativa al menos existe un coeficiente distinto a los demás. Realizaremos una prueba gráfica que nos permitirá tener un grado más de seguridad, lo que podemos visualizar en la figura \ref{fig:pruebagraficap} es que la hipótesis nula se rechaza, mediante lo que se observa en la gráfica surgieron diferentes puntos de vista, debido a la linea se sale "poquito" del intervalo de confianza según uno de los compañeros, por lo que aun cree que hay estabilidad estructural, a diferencia de los demás que creen que la linea roja que sale del intervalo es suficiente para indicar que la hipótesis nula se rechaza. 
+
+
+
+Realizaremos el **sctest** el cual permitirá confirmar con mas exactitud si la hipótesis nula se rechaza o no. Dicho test se ve a continuación. 
+
+```{r pruebagraficap, fig.cap="\\label{fig:pruebagraficap}Prueba gráfica", echo= TRUE}
+
+prueba.cusum = efp( y ~ t + It, type = "Rec-CUSUM")
+plot(prueba.cusum)  
+
+sctest(prueba.cusum)
+```
+
+Mediante el resultado del test Recusrive CUSUM test se confirma las sospechas de que la hipótesis nula se rechaza, debido a que el p-value < .05, por lo que no hay estabilidad estructural.
+
+
+
+
+\clearpage
+
+
+# Metodo de Holt-Winters
+
+
+## Actividad 9.7 
+
+Indague cómo trabajar el método de Holt-Winters en R.
+
+Encontramos varias referencias del uso del método de Holt-Winters donde usaban la función HoltWinters sobre una serie de tiempo, pero no especificaban si era el método aditivo o multiplicativo; aondando en la documentación encontramos que se puede especificar con el parámetro seasonal.
+
+Ejemplo:
+
+HoltWinters(serie, alpha = NULL, beta = NULL, gamma = NULL,
+            seasonal = c("additive", "multiplicative"))
+
+## Ejemplo 9.5.1. 
+
+Las ventas trimestrales de Tiger Sports Drink de los últimos ocho años se proporcionan en la tabla 7. Obtenga la gráfica de los datos e interpretela. Determine si es adecuado utilizar el método de Holt-Winters (justifique su respuesta) y, en su caso, auxíliese de software para aplicarlo a la serie en cuestión. ¿Cuáles fueron los valores óptimos para las constantes de suavizado? Obtenga pronósticos puntuales e intervalos de predicción para las ventas correspondientes al noveno año.
+
+
+```{r Tiger Sports Drink,fig.cap="\\label{fig:Tiger Sports Drink} Ventas trimestrales de Tiger Sports Drink",echo=FALSE}
+y<-read_excel("Tablas excel/Tiger Sports Drink.xlsx")
+y<- ts(y$Ventas)
+y<- ts(y,frequency = 4)
+plot(y)
+```
+
+
+En la figura \ref{fig:Tiger Sports Drink} podemos notar una tendencia creciente lineal. Al verificar el supuesto de tener patrón estacional creciente, se nos presento la duda de si el termino "patrón estacional creciente" se refiere a que los intervalos de tiempo aumentan o a que el aumento se da en los valores de la serie.
+Después de una búsqueda exhaustiva y una discusión coincidimos con que el termino se refiere a el aumento que se da en los valores de la serie y por lo tanto es conveniente usar el método de Holt-Winters multiplicativo.
+
+A continuación nos auxiliamos del software R para aplicarlo a la serie. 
+
+En la figura \ref{fig:Tiger Sports Drink2} observamos que la serie original y la serie atenuada por el método de Holt-Winters se ven muy parecidas.
+
+
+```{r Tiger Sports Drink2,fig.cap="\\label{fig:Tiger Sports Drink2} Serie de Tiger Sports Drink suavizada por Hol-tWinters", echo=FALSE}
+holtw<-HoltWinters(y,seasonal = "mult")
+plot(holtw)
+```
+
+
+Después de llevar a cabo el método Holt-Winters, los valores óptimos para las constantes de suavizamiento obtenidos fueron:
+
+- $\alpha=0.1648218$
+- $\beta=0.3366896$
+- $\gamma=0.02649796$
+
+
+Obtenemos los pronósticos puntuales y los intervalos de predicción para las ventas correspondientes al noveno año.
+Los pronósticos e intervalos de confianza para el noveno año son los siguientes:
+
+- Primer trimestre:  119.7469, (118.9411, 120.5526)
+- Segundo trimestre: 190.3554, (188.6616, 192.0491)
+- Tercer trimestre:  224.7265, (222.1579, 227.2952)
+- Cuarto trimestre:  158.2184, (156.0364, 160.4005)
+
+En la figura \ref{fig:Tiger Sports Drink pronosticos} podemos verlos gráficamente, y como era de esperarse continua la tendencia creciente para los próximos periodos del noveno año.
+
+
+```{r Tiger Sports Drink pronosticos,fig.cap="\\label{fig:Tiger Sports Drink pronosticos} Ventas trimestrales de Tiger Sports Drink", echo=FALSE}
+
+pred<-predict(holtw, 4, prediction.interval = TRUE,level = 0.95)
+plot(holtw, pred)
+```
+
+
+
+## Ejemplo 9.5.2. 
+
+Aplique el método de Holt-Winters al caso de la Acme Tool Company. Obtenga los pronósticos para los periodos 25 a 28. En (Hanke & Reitsch, 1996) asignaron valores para las constantes de suavizado de la siguiente forma: alpha = 0.4, beta = 0.1 y gamma = 0.3; con ellas, los pronósticos para los periodos 25, 26, 27 y 28 fueron, respectivamente, 751.9, 546.2, 449.6 y 718.8. Compare estos resultados con los suyos y discuta sus conclusiones.
+
+En la figura \ref{fig: ACME} vemos que una tendencia creciente a mediados de 1990 y su varianza también parece creciente.
+
+```{r ACME,fig.cap="\\label{fig: ACME} Ventas trimestrales de ACME Tool Company",echo=FALSE}
+acme<-read_excel("Tablas excel/Ejemplo 8.2.1.xlsx")
+acme<- ts(acme$ventas, start=1988, frequency = 4)
+acme2 <- ts(acme[1:24], start=1988, frequency = 4)
+plot(acme)
+```
+
+Con ayuda de R pudimos encontrar los parámetros óptimos:
+
+- $\alpha = 0.7918568$
+- $\beta = 0.08124336$
+- $\gamma = 1$
+
+```{r ACME_Holt-Wintrers,fig.cap="\\label{fig: ACME_Holt-Wintrers} Serie de tiempo vs Holt-Winters",echo=FALSE}
+
+holtw2<-HoltWinters(acme2, seasonal = "mult")
+pred2<-predict(holtw2, 4, prediction.interval = TRUE,level = 0.95)
+
+plot(holtw2, pred2)
+
+```
+
+Los pronósticos e intervalos de confianza para el 1994 año son los siguientes:
+
+- Primer trimestre:  735.9411, (602.6646, 869.2175)
+- Segundo trimestre: 509.9420, (355.5301, 664.3539)
+- Tercer trimestre:  396.0541, (224.2120, 567.8962)
+- Cuarto trimestre:  686.8938, (407.1991, 966.5885)
+
+y podemos verlos gráficamente en la figura \ref{fig: ACME_Holt-Wintrers}.
+
+```{r MAE,echo=FALSE}
+libro <- c(751.9, 546.2, 449.6, 718.8)
+our <- c(735.9411, 509.9420, 396.0541, 686.8938)
+
+mae1 <- mae(libro, acme[25:28])
+mae2 <- mae(our, acme[25:28])
+
+```
+
+
+Los pronósticos para los periodos 25, 26, 27 y 28 fueron, respectivamente, 751.9, 546.2, 449.6 y 718.8. Comparando ambos pronósticos con los valores reales los cuales fueron 850, 600, 450 y 700.
+Encontramos que mediante la métrica MAE el error de nuestras aproximaciones (67.79225) fue mayor en comparación de los obtenidos en el libro (42.775) por lo que podemos ver que las constantes de suavizado son un factor muy importante.
+
+
+
+## Ejemplo 9.5.3. 
+
+Las ventas trimestrales de cierto modelo de bicicleta de montaña en los últimos cuatro años se muestran en la tabla 9-4. Grafique la serie. Determine si es conveniente utilizar el método aditivo de Holt-Winters para pronosticar los cuatro trimestres del quinto año, en cuyo caso, auxíliese de software para realizarlo.
+
+
+```{r Modelo de bicicleta de montaña,fig.cap="\\label{fig: Modelo de bicicleta de montaña} Modelo de bicicleta de montaña",echo=FALSE}
+y<-read_excel("Tablas excel/Ejemplo 9.5.3..xlsx")
+y<- ts(y$Ventas)
+y<- ts(y,frequency = 4)
+plot(y)
+```
+
+
+En la figura \ref{fig: Modelo de bicicleta de montaña} podemos notar que la serie de tiempo muestra tendencia lineal y un patrón estacional con variación estacional constante y por lo tanto es adecuado utilizar el método Holt-Winters aditivo.
+
+
+Procedemos a aplicar dicho método a la serie.
+
+Con ayuda de R pudimos encontrar los parámetros óptimos:
+
+- $\alpha = 0.05191289$
+- $\beta = 1$
+- $\gamma = 0.901122$
+
+
+```{r Bicicletas Holt-Winters,fig.cap="\\label{fig: Bicicletas Holt-Winters} Modelo de bicicletas Holt-Winters",echo=FALSE}
+holtw3<-HoltWinters(y, seasonal = "additive")
+pred3<-predict(holtw3, 4, prediction.interval = TRUE,level = 0.95)
+
+plot(holtw3, pred3)
+```
+
+
+En la figura \ref{fig: Bicicletas Holt-Winters} podemos ver que el pronostico parece congruente con el comportamiento de la gráfica con su tendencia creciente y su estacionalidad anual. En general esta gráfica se comporta de manera "bonita" por lo que no hay mucho que decir de ella. 
+
+Los pronósticos e intervalos de confianza para el quinto año son los siguientes:
+
+- Primer trimestre:  17.37947, (16.01815, 18.74078)
+- Segundo trimestre: 39.32862, (37.95999, 40.69725)
+- Tercer trimestre:  53.29915, (51.91420, 54.68410)
+- Cuarto trimestre:  23.41533, (22.00182, 24.82884)
+
+
+## Actividad 9.8
+
+Determine si son aplicables los métodos de Holt-Winters a las series de tiempo del INEGI que se han trabajado en el curso. En su caso, compare los resultados con los obtenidos en ejemplos o actividades previas.
+
+En la figura \ref{fig: Serie INEGI1} podemos ver que la gráfica tiene tendencia decreciente, su varianza parece tener un comportamiento estocástico. Estamos seguros de que el método de Holt-Winters no se podría aplicar a esta serie, pues no tiene estacionalidad y la tendencia no es lineal. 
+
+En la figura \ref{fig: Serie INEGI2} la gráfica presenta tendencia creciente con un comportamiento lineal, parece tener estacionalidad, en general parece comportarse bien,tuvimos una pequeña discusión de si la varianza parecía ser constante o no,porque en algunos puntos parece no serlo(al principio, a la mitad y al final), concluimos que la varianza si es constante y también su variación estacional por lo tanto, podría aplicarse el método Hotlt-Winters aditivo.
+
+En la figura \ref{fig: Serie INEGI3} nos encontramos con una diferencia de opiniones. Podemos ver lo que parece ser un comportamiento con tendencia lineal creciente hasta el año 2000, después hay un decaimiento hasta el año 2002 y se vuelve a estabilizar la tendencia, debido a esto, algunos de nosotros no estamos de acuerdo con que su comportamiento sea lineal, sino mas bien cúbico,además parece tener estacionalidad anual y variación estacional constante.
+
+Si tomamos la primera postura(el comportamiento de la serie es lineal) entonces podríamos aplicar el método de Hotlt-Winters aditivo; desde la otra perspectiva no cumple con los supuestos necesarios para aplicar el método.
+
+En la figura \ref{fig: Serie INEGI4} podemos ver claramente estacionalidad anual y variación estacional creciente, volvemos a tener opiniones diferentes acerca del comportamiento de la tendencia, por un lado decimos que tiene tendencia lineal y por el otro que su comportamiento es cúbico. Podemos ver también un posible dato atípico cerca de marzo del 2020, debido a la endemia. Entonces si tomamos a la tendencia de la serie como lineal, podemos aplicar el método de Hotlt-Winters multiplicativo; desde el otro punto de vista no cumple con los supuestos necesarios para aplicar el método.
+
+En la figura \ref{fig: Serie INEGI5} podemos ver que la serie no tiene estacionalidad y por lo tanto no podríamos aplicar el método de Holt-Winters.
+
+En la figura \ref{fig: Serie INEGI6} podemos ver estacionalidad anual, se ve de manera mas notoria a partir del año 1990, su variación estacional es creciente y tiene tendencia lineal, por lo tanto podemos aplicar el método de Holt-Winters multiplicativo.
+
+
+```{r Serie INEGI1,fig.cap="\\label{fig: Serie INEGI1} Serie INEGI1",echo=FALSE}
+inegi1<-read_excel("Tablas excel/Producción de petroleo.xlsx")
+inegi1<- ts(inegi1$`ducción petroleo`)
+inegi1<- ts(inegi1,frequency = 12, start=2017)
+plot(inegi1)
+```
+
+
+```{r Serie INEGI2,fig.cap="\\label{fig: Serie INEGI2} Serie INEGI2",echo=FALSE}
+inegi2<-read_excel("Tablas excel/Actividad 8.3.3.xls")
+inegi2<- ts(inegi2$Dato)
+inegi2<- ts(inegi2,frequency = 4, start=1980)
+plot(inegi2)
+```
+
+
+```{r Serie INEGI3,fig.cap="\\label{fig: Serie INEGI3} Serie INEGI3",echo=FALSE}
+inegi3<-read_excel("Maquila de exportación.xlsx")
+inegi3<- ts(inegi3$Dato)
+inegi3<- ts(inegi3,frequency = 12, start=1993)
+plot(inegi3)
+```
+
+
+```{r Serie INEGI4,fig.cap="\\label{fig: Serie INEGI4} Serie INEGI4",echo=FALSE}
+inegi4<-read_excel("Comercio al por menor.xlsx")
+inegi4<- ts(inegi4$Dato)
+inegi4<- ts(inegi4,frequency = 12, start=2008)
+plot(inegi4)
+```
+
+
+```{r Serie INEGI5,fig.cap="\\label{fig: Serie INEGI5} Serie INEGI5",echo=FALSE}
+inegi5<-read_excel("Tablas excel/Indice personal ocupado.xlsx")
+inegi5<- ts(inegi5$Dato)
+inegi5<- ts(inegi5,frequency = 12, start=2006)
+plot(inegi5)
+```
+
+
+```{r Serie INEGI6,fig.cap="\\label{fig: Serie INEGI6} Serie INEGI6",echo=FALSE}
+inegi6<-read_excel("Tablas excel/BIE_BIE20210612195510.xlsx")
+inegi6<- ts(inegi6$Dato)
+inegi6<- ts(inegi6,frequency = 4, start=1980)
+plot(inegi6)
+```
+
+
+### Actividad 9.8.4
+
+Realice la lectura de la sección 4.4.1 en Giraldo (2006), correspondiente al algoritmo de Brockwell y Davis. Aplique dicho algoritmo en R a alguna de las series del numeral 1.
+
+Aplicaremos el algoritmo a la serie de la figura \ref{fig: Serie INEGI4}. En la figura \ref{fig: Brockwell-Davis} muestra la estimacion de la tendencia en la serie de la figura de la serie antes mencionada.
+
+```{r Brockwell-Davis,fig.cap="\\label{fig: Brockwell-Davis} Brockwell-Davis",echo=FALSE}
+
+seascomp = function(x,p){
+#----------algoritmo Brockwell-Davis
+n <- length(x)
+q <- floor(p/2)
+a <- rep(1,2*q+1)
+
+if(q==p/2){
+  a[2*q+1] <- 0.5
+  a[1] <- 0.5
+  a <- a/p
+  m <- stats::filter(x,a,"conv",2,F,NULL)
+}
+else{
+  a <- a/p
+  m <- stats::filter(x,a,"conv",2,F,NULL)
+}
+
+w <- double(p)
+
+for(k in 1:p){
+  j <- seq(floor(max(0,q-k)/p)+1, floor((n-q-k)/p), 1)
+  w[k] <- sum(x[k+j*p] - m[k+j*p])/(floor((n-q-k)/p) - floor(max(0,q-k)/p) + 1)
+}
+
+s1 <- w - mean(w)
+s <- c(rep(s1,floor(n/p)),s1[1:(n%%p)])
+D <- list(T=m, S=s)
+
+return(D)
+}
+
+brockdav <- ts(seascomp(inegi4, 12))
+
+plot(brockdav$T)
+```
+
+
+
+
+\pagebreak
+\pagebreak
+
+
+# Bibliografía

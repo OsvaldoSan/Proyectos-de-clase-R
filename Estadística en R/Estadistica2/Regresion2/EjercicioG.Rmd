@@ -1,0 +1,82 @@
+---
+title: "Ejercicio G"
+author: "Osvaldo"
+date: "21/3/2020"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(lmtest)
+```
+```{r carga,echo=FALSE}
+#---------carga de datos
+x <- c(4.5,4.5,4.5,4.0,4.0,4.0,5.0,5.0,5.5,5.0,0.5,0.5,6.0,6.0,1.0,1.0,1.0)
+y <- c(619,1049,1033,495,723,681,890,1522,987,1194,163,182,764,1373,978,466,549)
+datos<-data.frame(x,y)
+```
+# Comprobacion de supuestos
+
+#### 1.Independencia
+```{r i1}
+chisq.test(datos)
+#Dado que la prueba chi no nos sirve usmos solo la correlacion
+
+##1.1.Comprobacion de linealidad concorrelacion, usando el coeficiente de pearson
+cor.test(x = datos$x,
+         y = datos$y, 
+         alternative = "two.sided",
+         conf.level  = 0.95,
+         method      = "pearson")
+```
+El cual indica una correlacion aceptable con una gran significancia, por lo tanto podemos proseguir.
+
+#### 2.Analisis de residuos, comprobar no correlacion entre estos
+```{r an}
+regresion<- lm(datos$y ~ datos$x , data=datos)
+res<-rstandard(regresion)
+#No rechazar H0, es que no hay autocorrelacion
+#Rechazar H0, es que hay autocorrelacion
+#Si p-value es pequeño rechazamos H0
+plot(datos$x,res,xlab = "X",ylab = "Residuos")
+abline(h=0)
+#durbin-watson test
+dwtest(regresion,alternative = "two.sided")
+###no podemos rechazar H0 por que p-value es grande
+```
+Con esto hemos asegurado que no hay correlacion.
+
+#### 3.Prueba de normalidad
+```{r norm}
+#H0 dis.teorica=dist.empirica
+shapiro.test(res)
+hist(res)
+#con lo que comprobamos su normalidad, ya que no se rechaza H0
+```
+
+#### 4.varianza constante
+```{r var}
+bptest(regresion)
+#con un p-value mayor a 0.05 rechazamos H0
+```
+Como podemos ver no hay homocedasticidad de varianzas por lo que podemos epemezar a utilizar el modelo.
+
+# Ejercicio 1, Es razonable hacer un modelo de regresion? con un alpha=0.1
+```{r graph,echo=FALSE}
+plot(datos)
+```
+Vemos que parece razonable, pero ejecutamos la regresion y analisamos su tabla anova.
+
+```{r table}
+  reg<-lm(datos$y ~ datos$x , data=datos)
+  anova(reg)
+```
+Con la tabla podemos ver que hay un p-value para F menor a 0.1, con lo cual podemos considerar a la regresion como significante y por tanto es razonable utilizar este modelo.
+
+# Ejercicio 2. Se puede encontrar un mejor modelo?
+Para esto analizaremos la falta de ajuste y el error puro
+```{r err}
+
+```
+
+Con esto vemos que no hay falta de ajuste por lo que podemos decir que este es un buen modelo y no se puede encontrar otro mejor.

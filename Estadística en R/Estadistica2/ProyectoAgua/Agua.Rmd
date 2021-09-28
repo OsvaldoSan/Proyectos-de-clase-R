@@ -1,0 +1,265 @@
+---
+title: "Agua"
+author: "Osvaldo Santos, Juan Gerardo Pilliado, Martín Rasgado"
+date: "3/4/2020"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(lmtest)
+library(alr3)
+library(apaTables)
+library(GGally)#Graficos de dispercion multiples
+library(corrplot)#graficas de correlacion
+library(car)#vif
+```
+
+```{r datos,echo=FALSE}
+Datos_1<-read_excel("Datos_1.xlsx")
+Nombres<-read_excel("Nombres.xlsx")
+names(Datos_1)<-c("y","x1","x2","x3","x4","x5")
+
+```
+
+# Regresión lineal sobre el suministro de agua potable
+
+## Sobre el modelo
+
+El modelo busca establecer una relación lineal entre las variables dependientes:
+
+- Viviendas con agua
+- Mantos superficiales
+- Mantos subterráneos
+- Plantas potabilizadoras
+- Precipitación
+
+y la variable independiente: suministro de agua potable a la población, sin contemplar a las industrias o comercios. Con esto buscamos analizar los datos actuales y ver que tan congruentes son con el estrés hdidrico haciendo una comparativa entre estados, para esto tenemos la relación entre los estados y las variables dependientes antes mencionadas. Posteriormente realizaremos algunas predicciones para ver que tan grave podría ser esto; ademas de aplicarlo a comunidades mas pequeñas o grandes(mientras el intervalo de predicción lo permita) y poder ver su comportamiento.
+
+Todos estos datos son del año 2016 recuperados por el INEGI.
+
+## Pruebas para el modelo
+
+### Verificación de relación lineal
+
+Para ello haremos uso de gráficas y de una matriz de correlaciones:
+```{r veri1,echo=FALSE}
+ggpairs(Datos_1, lower = list(continuous = "smooth"),
+        diag = list(continuous = "densityDiag"),title = "Gráficas de dispersión")
+
+```
+
+Lo que se aprecia en el modelo es que _x1_ y _y_ tienen una alta correlación y su gráfico casi forma una linea recta; mientras que con las demás es difícil establecer una relación directa, por que podríamos decir que _x3_ tiene una alta correlación con _y_ pero no parece suficiente como para afirmar tal cosa. Si bien no podemos descartar el modelo aun, podemos darnos cuenta de que algunas variables no nos van a servir, no podemos asegurarlos hasta que realicemos el _método de selección de variables_; esto en dado caso de que el modelo si ajuste a los datos, lo cual sabremos al obtener el modelo y ver si es significante y ademas que cuente con un R2 alto que nos convenza de seguir.
+
+### Obtención del modelo
+
+```{r veri,echo=FALSE}
+fit<-lm(y~.,Datos_1)
+summary(fit)
+```
+
+Vemos de manera un tanto sorprendente que a pesar de lo visto en las gráficas anteriores el modelo es significante para un _alpha=0.05_ y no solo eso sino que la R2 ajustada tiene un valor muy alto por lo que este modelo describe en un 87% la variabilidad de _y_, lo cual es sorpresivo despues de ver las gráficas. Aunque algo que nos deja con cierta inquietud es que haya un error estandar residual tan grande, pero bien dado que el resto de los atributos del modelo son muy buenos parece que podemos continuar.
+
+### Metodo de selección de variables
+
+Para esto utilizaremos el criterio de selección de Akaike(AIC), que mide tanto la bondad de ajuste del modelo como la complejidad de este, con lo que nos puede dar una muy buena respuesta en si es correcto retirar o no alguna variable y también para el caso de incluir o no una variable, ya que es una medición que toma en cuenta que tanto mejora el modelo con una variable mas pero también penaliza si lo vuelve mas complejo y no lo mejora tanto.
+
+
+El modelo que arroje un menor estadístico _AIC_ sera el elegido.
+
+```{r selec,echo=FALSE}
+nuevo_ajuste<-step(object =fit,direction = "both",trace = 0 )
+summary(nuevo_ajuste)
+```
+
+Como se puede apreciar, el modelo mejora un poco al deshacerse de las variables que no aportaban nada lo cual no era algo esperado ya que al ejecutar un método de este tipo se espera mas un modelo un poco peor pero mucho menos complejo.
+
+
+Al hacer esto nos quedamos únicamente con _x1_, _x2_ y _x5_ que son: la población con agua potable, los mantos superficiales de donde se extrae el agua y la precipitación pluvial. Lo cual para nuestro propósito sirve de buena manera ya que tenemos los datos de la población y la precipitación pluvial a fácil alcance y la cantidad de mantos es algo relativamente fácil de medir.
+Otra ventaja de este nuevo modelo es que vemos que no necesitaremos la cantidad de mantos subterráneos ni la cantidad de plantas potabilizadoras con lo cual podemos ahorrarnos una buena parte del trabajo.
+
+
+### Verificación de supuestos
+
+#### 1 Normalidad en los errores
+
+Si hay una relación lineal entre los predictores y _y_ podemos decir que los errores se distribuyen normalmente en torno a 0 y con varianza constante, por lo que después de las pruebas hechas podemos esperar que nuestro modelo cumpla con esto.
+
+
+Para comprobar la normalidad utilizaremos una gráfica que compara los cuantiles muestrales con los cuantiles teóricos de una distribución normal, esto nos debería arrojar una linea recta y los puntos de los errores alrededor de ella.
+```{r sup_norm,echo=FALSE}
+qqnorm(nuevo_ajuste$residuals)
+qqline(nuevo_ajuste$residuals)
+```
+
+A pesar de algunos datos alejados de la linea recta, el gráfico parece indicar normalidad. Para asegurar esto utilizaremos un _shapiro.test_.
+```{r sup_norm2}
+shapiro.test(nuevo_ajuste$residuals)
+
+```
+
+Para esto nuestra hipótesis nula es que hay normalidad, y por el _p-value_ que tenemos vemos que no podemos rechazarla. Por lo tanto comprobamos la normalidad en los residuos.
+
+#### 2 Homocedasticidad de varianzas
+
+Para ver esto de forma clara utilizaremos un gráfico en el que compararemos los residuos con los valores ajustados del modelo, estos se deben distribuir en torno a 0 de forma aleatoria por lo que esperamos no encontrarnos con ningún patrón.
+```{r vari1, echo=FALSE}
+ggplot(data = Datos_1, aes(nuevo_ajuste$fitted.values, nuevo_ajuste$residuals)) +#aes(x,y)
+  geom_point() +#Coloca los puntos
+  geom_smooth(color = "darkblue", se = FALSE,method = 'loess',formula = y~x) +#grafica suave y azul
+  geom_hline(yintercept = 0) +#Coloca la linea del 0
+  theme_bw()#Temas para lo no dato
+```
+
+Y como vemos en el gráfico a pesar de algunos datos atípicos en general el resto aparenta una distribución aleatoria en torno a 0, por lo que podemos esperar una varianza constante. Pero para garantizar la varianza constante usaremos el _Breusch-Pagan-test_.
+```{r vari2}
+bptest(nuevo_ajuste)
+```
+
+Como la hipótesis nula es que hay homocedasticidad de varianzas y tenemos un _p-value_ mayor a 0.05 no podemos rechazar esa hipótesis, por lo que podemos decir que hay varianza constante en el modelo.
+
+#### 3 No autocorrelacion de errores
+
+Para comprobar que los errores no están correlacionados usamos un _Durbin-Watson-test_.
+```{r correlacion1}
+dwtest(nuevo_ajuste,alternative = "two.sided")
+```
+
+Trabajamos bajo la hipótesis nula de que __no hay autocorrelacion__, por lo que dado el _p-value_ mayor a 0.05 no podemos rechazar la hipótesis nula, por lo tanto decimos que no hay autocorrelacion en los errores.
+
+#### 4.Multicolinealidad
+
+Para evaluar la multicolinealidad usaremos una matriz de correlaciones para las variables dependientes elegidas, ya arriba se aprecio que no hay colinealidad en estas pero sera mas claro en la siguiente gráfica, donde se puede apreciar por colores siendo los extremos azul y rojo los mas peligrosos y la parte mas clara de los colores la zona segura:
+
+```{r cor, echo=FALSE}
+corrplot(cor(dplyr::select(Datos_1, x1,x2,x5)),
+         method = "number", tl.col = "black",title = "Matriz de correlaciones",bg="black")
+```
+
+Como vemos solo hay una correlación cercana a .5 y esta es la de _x2_ con _x1_ que aunque es la mas alta aun esta lejos de ser una correlación alta y con eso podemos ver que no hay multicolinealidad necesariamente pero para confirmar obtendremos el _factor de inflación de varianza(VIF)_ que nos indicara si efectivamente hay o no correlación.
+```{r viftest}
+vif(nuevo_ajuste)
+```
+
+Lo que nos indican los valores del factor es que hay poca colinealidad para cada una de las variables, ya que están muy cerca del valor __1__ que indicaría que no hay nada de correlación entre ellas. Pero con esto podemos decir que no hay multicolinealiad que sea relevante para el modelo.
+
+## Análisis de la regresión
+
+Una vez hechas las pruebas pertinentes nos dedicamos a hacer el análisis del modelo, el cual como se ha dejado ver se centrara en ver el comportamiento de los datos y como esto es congruente con el estrés hidrico en México y en muchas partes de los estados; esto dado que por ejemplo en los estados del norte donde vemos un gran estrés hidrico vemos también que hay menor precipitación así como menor cantidad de suministro de agua, pero analizaremos esto mas centrados en la proporción de agua que llega a las casas en comparación, y como tenemos una asociación entre los datos de las variables dependientes y los estados podemos hacer inferencias, por ejemplo:
+
+Nuevo león es un estado con un alto indice de estrés hidrico por lo que podemos analizar rápidamente sus datos de suministro únicamente con las variables de _Viviendas con agua_, _Mantos superficiales_ y _Precipitación_ y y compararlas con las de otros estados como yucatan o Oaxaca y posteriormente realizar un pronostico en el caso de que la viviendas se queden igual pero la precipitación o la cantidad de mantos bajen y como esto causaría que el suministro de agua baje. 
+
+### Agua suministrada en Nuevo León y Oaxaca
+
+Como hemos visto por el gráfico de estrés hidrico mostrado al principio, monterrey es uno de los estados con mas estrés hidrico en el país mientras que Oaxaca es de los que menos tiene en el país sin ser ambos casos extremos en sus respectivas situaciones, por lo que veamos los datos:
+```{r datmont,echo=FALSE}
+i<-19#definen a los estados
+j<-20
+val<-data.frame(Datos_1$x1[19],Datos_1$x2[19],Datos_1$x5[19])#data para usar
+val_name<-data.frame(Nombres$Entidad_Federativa[i],Datos_1$x1[i],Datos_1$x2[i],Datos_1$x5[i])#data frame para mostrar
+val2<-data.frame(Datos_1$x1[j],Datos_1$x2[j],Datos_1$x5[j])
+val_name2<-data.frame(Nombres$Entidad_Federativa[j],Datos_1$x1[j],Datos_1$x2[j],Datos_1$x5[j])
+names(val_name)<-c("Estado","Viviendas con agua","Mantos superficiales","Precipitación")
+names(val_name2)<-c("Estado","Viviendas con agua","Mantos superficiales","Precipitación")
+names(val_name2)<-c("Estado","Viviendas con agua","Mantos superficiales","Precipitación")
+names(val)<-c("x1","x2","x5")
+names(val2)<-c("x1","x2","x5")
+val_name<-rbind(val_name,val_name2)#unir data frames
+val_name
+```
+
+Esto nos muestra primero que Nuevo León tiene más viviendas con agua ya que esta mas poblado que Oaxaca aunque en Oaxaca hay mucha mas agua disponible dadas las lluvias y los mantos que son muy abundantes, esto podría ayudar cuando la población crezca.
+
+```{r ydatos,echo=FALSE}
+tabla_aguasum<-data.frame(c(Nombres$Entidad_Federativa[i],Nombres$Entidad_Federativa[j])
+                         ,c(nuevo_ajuste$fitted.values[i],nuevo_ajuste$fitted.values[j])
+                         ,c((nuevo_ajuste$fitted.values[i]/Datos_1$x1[i])*1000,
+                            (nuevo_ajuste$fitted.values[j]/Datos_1$x1[j])*1000))
+names(tabla_aguasum)<-c("Estado","Agua potable suministrada","Proporción Agua/Viviendas(Metros cúbicos)")
+tabla_aguasum
+```
+
+En este vemos una relación bastante curiosa y es que si únicamente dividimos el agua suministrada  entre la cantidad de viviendas con agua nos encontramos que Oaxaca le destina menos agua a sus habitantes en general que Nuevo León, esto es notorio ya que la muestra original de agua suministrada es únicamente de agua para consumo domestico y servicios públicos. Lo que nos esta mostrando que Oaxaca destina muy poca agua para sus habitantes mientras que Nuevo León destina mucha mas. Esto _a priori_ parece indicar que quien mas problemas tendrá en el futuro es Oaxaca, pero hay que considerar varios factores en esto como podría ser que tal vez en Nuevo León se desperdicia mas agua, esto es algo que no podemos averiguar con nuestro modelo pero lo que si podemos hacer es una predicción en el caso de que la población de ambos estados aumente y como se comportaría el suministro de agua si eso ocurriera.
+
+Ahora haremos la predicción de como esto puede cambiar en un futuro para estos estados en particular, en esta predicción consideraremos un incremento en la población lo cual también tendrá que incrementar las viviendas con agua(idealmente), la cual consideraremos con un aumento de 600,000 en el caso de Nuevo León y para Oaxaca con un incremento de 100,000; esto considerando el alto indice de crecimiento que tiene Nuevo León y el bajo indice que tiene Oaxaca. Ademas de considerar sin cambios a los mantos ya que es poco probable que en un intervalo de tiempo en el que crezca la población de esta manera los mantos se sequen, aunque es cierto que algunos de ellos están cerca de su final pero para fines experimentales supondremos que no cambian. Y para la precipitación tomaremos la mediana de lluvias ocurridas en los últimos 10 años para ambos estados.[insertar cita,https://www.gaceta.unam.mx/el-crecimiento-poblacional-de-mexico-problema-grave/]
+
+Para hacerlo utilizaremos la función de _R_ para calcular la predicción basándose en el intervalo de predicción que vimos en el anexo de teoría pero generalizándolo para regresión múltiple; el valor de la predicción se encontrara en un intervalo de predicción del 95%
+```{r datosmont,echo=FALSE}
+val<-data.frame(Datos_1$x1[i]+600000,Datos_1$x2[i],614.4)#Mediana de lluvias
+val2<-data.frame(Datos_1$x1[j]+100000,Datos_1$x2[j],925)#
+names(val)<-c("x1","x2","x5")
+names(val2)<-c("x1","x2","x5")
+predicto<-predict(nuevo_ajuste,val,alpha=0.05,interval = "predict")
+predicto2<-predict(nuevo_ajuste,val2,alpha=0.05,interval = "predict")
+tabla_predic<-data.frame(c(Nombres$Entidad_Federativa[i],Nombres$Entidad_Federativa[j])
+                         ,c(predicto[1],predicto2[1])
+                         ,c(predicto[1]/(Datos_1$x1[i]+600000)*1000,
+                          predicto2[1]/(Datos_1$x1[j]+100000)*1000))
+names(tabla_predic)<-c("Estado","Predicción de agua potable suministrada","Proporción Agua/Viviendas(Metros cúbicos)")
+tabla_predic
+```
+
+Estos resultados nos muestran algo un poco inesperado y es que mientras que en Nuevo León la población aumento 6 veces mas que en Oaxaca, el cambio en la proporción de agua para cada vivienda no produjo casi ningún cambio en el estado de Nuevo León pero para Oaxaca el cambio fue mas notorio ya que subió 2 unidades la cantidad de metros cúbicos de agua que recibe cada casa. Esto resulta un tanto preocupante para Nuevo León ya que si bien en principio se puede pensar que pues aumentaron las casas con agua es normal que a cada casa le sigue llegando la misma cantidad de agua y a las nuevas también les llegara, pero hay que ser consientes de que es un modelo de la vida real y si vemos que monterrey tiene indice de crecimiento de los mas altos en el país es fácil pensar que el incremento que supusimos aquí para las viviendas con agua supone un lapso de tiempo en el que la población en general creció y dado que este periodo no debe exceder los 10 años podemos decir que los habitantes dentro de una casa también crecieron por ende tendría que aumentar el suministro de agua a cada vivienda pero esto no ocurre en Nuevo León.
+
+
+Elegimos precisamente estos dos estados por que representan dos puntos no extremos en los que podemos hacer una interesante comparación, que deja notar como en poco tiempo habrá ciertos estados que empiecen a notar mucho mas esto del "estrés hidrico" y esto es algo que nos debe hacer reflexionar por que tal vez nuestro estado o comunidad aun no este en puntos tan avanzados pero nunca es temprano para ser responsables.
+
+
+
+### Agua suministrada con mas población y menos mantos y lluvias
+
+Para este ejercicio consideraremos el supuesto, razonable, del aumento de la población y por ende aumento de las viviendas con acceso a agua acompañado del decremento en dos partes importantes como lo son las lluvias y los mantos superficiales, por lo que para esto consideraremos datos asociados a la respuesta media de los valores ajustados causados por la mediana en cada una de las variables dependientes y haremos una predicción a este considerando los factores mencionados al principio.
+
+Primero mostraremos los datos de las variables predictoras:
+```{r datospredic,echo=FALSE}
+val<-data.frame(median(Datos_1$x1),median(Datos_1$x2),median(Datos_1$x5))
+names(val)<-c("Viviendas","Mantos superficiales","Precipitación")
+val
+```
+
+Así que partiremos de los datos mostrados y usando la función en r para la estimación de respuesta media mostraremos el valor esperado de _y_ dados estos estos datos:
+
+```{r agsum1,echo=FALSE}
+names(val)<-c("x1","x2","x5")
+media_y<-predict(nuevo_ajuste,val,alpha=0.05,interval = "confidence")
+media_y
+```
+
+Esa es una estimación basándonos en la mediana de cada uno de los estimadores utilizando el método de estimación de respuesta media que a diferencia del que usamos en el inciso anterior(predicción) este da un intervalo mas pequeño y es por que no esta haciendo una predicción puntual sino mas bien esta prediciendo a un parámetro que en este caso es la respuesta media que tendría _y_.
+
+Para poder interpretar esto de manera mas clara mostramos abajo el agua suministrada a tres estados, uno en el norte del país, otro en el centro y otro en el sur que ademas muestran diferentes niveles de estrés hidrico.
+
+```{r datgusum,echo=FALSE}
+i<-2#definen a los estados
+j<-13
+k<-27
+val_name<-data.frame(Nombres$Entidad_Federativa[i],nuevo_ajuste$fitted.values[i],Datos_1$x1[i],Datos_1$x2[i],Datos_1$x5[i])#data frame para mostrar
+val_name2<-data.frame(Nombres$Entidad_Federativa[j],nuevo_ajuste$fitted.values[j],Datos_1$x1[j],Datos_1$x2[j],Datos_1$x5[j])
+val_name3<-data.frame(Nombres$Entidad_Federativa[k],nuevo_ajuste$fitted.values[k],Datos_1$x1[k],Datos_1$x2[k],Datos_1$x5[k])
+names(val_name)<-c("Estado","Agua suministrada","Viviendas con agua","Mantos superficiales","Precipitación")
+names(val_name2)<-c("Estado","Agua suministrada","Viviendas con agua","Mantos superficiales","Precipitación")
+names(val_name3)<-c("Estado","Agua suministrada","Viviendas con agua","Mantos superficiales","Precipitación")
+val_name<-rbind(val_name,val_name2)#unir data frames
+val_name<-rbind(val_name,val_name3)#unir data frames
+val_name
+```
+
+Con esto nos damos cuenta de que nuestra aproximación de la media en el agua suministrada al país esta dentro del umbral de lo razonable, dado que no excede la cantidad de estados que suministran muchísima agua a sus habitantes, como Baja California, ni tampoco es menor que uno de los estados que menos lo hacen, como Tabasco, pero si esta cerca de un estado intermedio como Hidalgo.
+
+Pero bien ahora lo que nos gustaría mostrar con todo esto es jacer la predicción que comentamos arriba, para esto aumentaremos en un 10% la cantidad de viviendas con agua, y reduciremos la cantidad de mantos y lluvias en un 15%, estas cantidades elegidas tan convenientemente las creemos razonables por el incremento exponencial de la población y los problemas que acarrea consigo el cambio climático como lo es la escases de agua.
+
+Esto es lo que nos muestra esa predicción en cuando a agua suministrada, en este caso usando ya el intervalo de predicción:
+```{r datosagusmi,echo=FALSE}
+val<-data.frame(median(Datos_1$x1)+(median(Datos_1$x1)*0.1)
+                ,median(Datos_1$x2)-(median(Datos_1$x2)*0.15)
+                ,median(Datos_1$x5)-(median(Datos_1$x5)*0.15))
+names(val)<-c("x1","x2","x5")
+media_y<-predict(nuevo_ajuste,val,alpha=0.05,interval = "predict")
+names(val)<-c("Viviendas","Mantos superficiales","Precipitación")
+val
+media_y
+```
+ Esto nos muestra un incremento bastante notorio con respecto al valor original y es que como normal pues si crece la cantidad de viviendas con agua también lo hará la cantidad de agua, ahora, la pregunta es ¿incremento lo suficiente?, para esto podemos ver cual es el la cantidad de viviendas con agua que tiene Baja california, la cual si bien es mayor que la de nuestra estimación solo lo es por un pequeño margen sin embargo la diferencia de agua suministrada en ambos caso es muy diferente, notoriamente es menor en nuestra estimación. Lo cual parece indicar que en general el país no esta preparado para afrontar años futuros con el crecimiento inminente de la población si alguno de los recursos falla o disminuye, cabe recordar que estas son estimaciones y que no podemos de ninguna manera establecer una causalidad, pero son datos que hay que tener en cuenta y con los que hay que pueden servir para establecer algo de conciencia en las personas.

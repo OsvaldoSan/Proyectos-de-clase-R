@@ -1,0 +1,105 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+# Análisis simple de la edad de usuarios de twitter
+
+Se tomará unicamente la edad del dadtaset de usuarios de twitter de kaggle [Twitter_age_gender](https://www.kaggle.com/panoskostakos/twitter-data-age-and-gender-prediction) con la intención de estimar la edad media de usuarios de twitter y en que rango se mueve, un análisis mayor puede ser compararlo con el de otra red social con un anova, pero por el momento no. Los datos de la edad se consiguieron a través de computer vision como se explica en el articulo adjunto al enlace de kaggle.
+
+Vamos a estimar la media y la varianza de las edades de estos usuarios.
+
+```{r}
+datos<-read.csv("~/Documentos/Datos/Tw_age_gender.csv")
+edades_tw=datos$faceAttributes.age
+length(datos$faceAttributes.age)
+```
+
+## Análisis exploratorio
+
+### Datos ausentes
+
+Notamos que en efecto hay datos ausentes.
+
+```{r}
+# Indica las posiciones de los ausentes.
+which(is.na(edades_tw)==TRUE)
+```
+
+Por lo cual los removemos ya que son pocos.
+
+```{r}
+edades_tw<-na.omit(edades_tw)
+```
+
+## Datos atípicos
+
+Vemos el diagrama de caja-Bigote, donde parece haber muchos datos bastante alejados de la medaiana.
+
+```{r}
+boxplot(edades_tw)
+```
+
+
+Vemos que en efecto la cantidad de datos atipicos es muy alta, pero respecto al total de los datos que
+es de $88056$ solo representa el 2%, por lo que podemos eliminarlos sin esperar que afecte drasticamente a la muestra.
+
+```{r}
+length(edades_tw[edades_tw>quantile(edades_tw,0.99) | edades_tw<quantile(edades_tw,0.01)])
+```
+
+Después de eliminarlos aún quedan algunos datos un tanto extraños, pero no deberían causar problemas.
+
+```{r}
+edades_tw<-edades_tw[edades_tw<=quantile(edades_tw,0.99) & edades_tw>=quantile(edades_tw,0.01)]
+boxplot(edades_tw)
+```
+
+Su histograma se ve muy bien y nos hace pensar aún más que no hay datos atípicos lo suficientemente preocupantes.
+
+```{r}
+hist(edades_tw,col='green')
+```
+
+
+
+## Inferencia
+
+Por el histograma supondremos que la muestra aleatoria que tenemos es de variables con distribución normal.
+
+La primerá aproximaxión es una estimación puntual usando el **método de los momentos**, proponemos así
+que $\bar{X}=\mu$ con el siguiente valor para la media:
+
+```{r}
+media=mean(edades_tw)
+media
+```
+¸
+Un valor esperado al ver el histograma, ahora para calcular podriamos hacerlo como una función parametral de la media muestral, pero parece más sencillo hacerlo por igualdad de momentos.
+
+```{r}
+varm<-var(edades_tw)
+varm
+```
+
+Si por el contrario usamos el método de máxima verosimilitud lo que tendriamos son las siguientes ecuaciones
+que terminan siendo casi las mismas a las que usamos arriba con los momentos muestrales, con la sutíl diferencia que la varianza muestral difiere de de la ecuación que se usa para aproximar la varianza con
+este método.
+
+![Ecuaciones](Media_Edades_tw/MaxVerosimilNormal.jpg)
+
+Una ventaja de usar estos estimadores por máxima verosimilitud es que nos asguramos de que son insesgados. La
+media segirá siendo la misma, pero usaremos una variable más para comparar la varianza, aunque como vemos
+la diferencia es minima.
+
+```{r}
+n=length(edades_tw)
+varmv<- (var(edades_tw)*(n-1))/n
+varmv
+```
+
+### Cualidades de los estimadores
+
+Vamos a ver que cualidades tienen estos estimadores, aunque la mayoría de estas tendrán que ser pruebas teoricas.

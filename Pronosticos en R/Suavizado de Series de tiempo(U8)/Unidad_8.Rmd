@@ -1,0 +1,1731 @@
+---
+title: "Unidad 8: Pronósticos de series de tiempo por suavizado"
+author:
+- "Abdelrrague Manzanares Caleb Elihud"
+- "González Zequeida Helena"
+- "Ramírez Pedraza Ariadna Fernanda"
+- "Santos Soto Martín Osvaldo"
+
+header-includes:
+  - \usepackage[spanish]{babel}
+  - \renewcommand{\and}{\\}
+output:
+    pdf_document: 
+      fig_caption: yes
+      number_sections: yes
+      toc: yes
+date: "27 de Mayo del 2021"
+csl: apa.csl
+bibliography: Pronosticos_2.bib
+---
+
+\listoffigures
+\listoftables
+\pagebreak
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(ggplot2)
+library(Metrics)
+library(yardstick)# Para mpe
+library(MLmetrics)# Para mape
+library(zoo)
+library(R.utils)# Para insert
+library(xtable)
+library(aTSA)
+# Todos los datos se encuentran en la carpeta datos ahora, y las imagenes en media
+dataset <- read_excel("Ejemplo 8.1.1.xlsx")
+# Librerias para diseño general
+library(xtable)
+options(xtable.floating = TRUE)# Es true para que latex reconozca que es una tabla
+options(xtable.timestamp = "")
+
+```
+
+# Proyección de la tendencia.
+
+## Ejemplo 8.1.1
+
+La tabla 8-1 muestra los registros de automóviles nuevos de pasajeros en
+Estados Unidos, de 1960 a 1992. Grafique los datos, ajuste una ecuación de tendencia, compare los valores estimados por la ecuación de tendencia con los datos reales y exponga sus resultados.
+
+Aquí mostramos la gráfica:
+
+```{r graficaSerie,fig.cap='Serie de tiempo registros de automóviles',echo=FALSE}
+  automoviles <- ts(dataset$`Registros (en millones)`,start=1960,frequency=12)
+  plot(automoviles)
+```
+
+Podemos ver un comportamiento polinomial, lo que indica que su estimación de los parámetros se puede realizar por el
+método de mínimos cuadrados. Vamos a proyectar la tendencia con ayuda de una regresión lineal para estimar los parámetros de la siguiente forma:  $y_{t}=\beta_{0}+\beta_{1}t$.
+
+```{r regresion, echo=FALSE}
+  num <- (1:33)
+  regresion <- lm (automoviles ~ num)
+```
+
+Los coeficientes encontrados fueron:
+          - $\beta_{0} = 7.98808$
+          - $\beta_{1} = 0.06870$
+
+La proyección de la tendencia se muestra gráficamente en la figura 2.
+
+```{r grafica_regresion, fig.cap='Proyeccion de la tendencia',echo=FALSE}
+  plot(num, automoviles, xlab='Periodos de tiempo', ylab='Autos')
+  abline(regresion)
+```
+
+El valor $\beta_{1} = 0.06870$, al ser positiva, indica que existe una tendencia ascendente de los registros de automóviles nuevos de pasajeros en Estados Unidos, aumentando a un cambio o razón promedio de 0,068 millones registros por cada año[@villarreal_introduccion_2016].
+Tiene sentido esta razón tan pequeña, pues la serie se comporta de manera cíclica y por eso no vemos un aumento tan elevado en el valor de $\beta_{1}$.
+
+En la gráfica encontramos los valores de nuestra serie (puntos) y la protección de la tendencia (linea) donde podemos ver una diferencia bastante notable entre los valores observados y la estimación. Podríamos concluir que no es un método muy adecuado para realizar pronósticos confiables.
+
+\pagebreak
+\pagebreak
+
+## Actividad 8.1
+
+Investigue qué mide el índice general de comercio al por menor. Con datos
+del Banco de Información Económica del INEGI.
+
+Se realizará una proyección de tendencia lineal, cuadrática, cúbico y exponencial. 
+
+En la figura 3 se presenta la gráfica de la serie.
+
+```{r setup1, include=FALSE}
+
+database <- read_excel("Actividad 8.1.xlsx")
+```
+
+```{r INE,fig.cap='Serie Encuesta Mensual sobre Empresas Comerciales.',echo=FALSE}
+datos <- ts(database$`Dato`,start=2008,frequency=12) 
+plot(datos)
+```
+
+Podemos observar que la serie se comporta con estacionalidad, además de que cuenta con datos atípicos en el 2020 al haber una reducción de los ingresos totales de las empresas por comercio al por menor. Observamos también que la serie tiene una tendencia polinomial creciente.
+
+Usaremos diferentes métodos, mostrados adelante, para poder realizar una proyección de tendencia.
+
+```{r generar_dato, echo=TRUE}
+T = length(datos)
+yi = datos[1:(T-12)]
+yf = datos[(T-12+1):T]
+
+t = seq(1:(T-12))
+t2 = t^2
+t3 = t^3
+lyi = log(yi)
+
+mod.lin = lm(yi~t)
+mod.cuad = lm(yi~t+t2)
+mod.cub = lm(yi~t+t2+t3)
+mod.log.lin = lm(lyi~t)
+
+# El modelo exponencial es no lineal
+# y se debe utilizar la funci´on nls.
+Ds = data.frame(yi,t)
+
+beta0 = mod.log.lin$coefficient[1]
+beta1 = mod.log.lin$coefficient[2]
+mod.exp = nls(yi~exp(beta0+beta1*t),data=Ds,
+start=list(beta0=beta0, beta1=beta1))
+```
+
+Procedemos a la creación de los modelos y sus respectivas gráficas: lineal, cuadrático, cúbico y exponencial.
+
+
+```{r grafica_lineal, fig.cap='Ajuste de la tendencia con el modelo lineal',echo=FALSE}
+  plot(t, yi, xlab='Periodos de tiempo', ylab='Ingresos')
+  abline(mod.lin,col="red")
+```
+
+Podemos notar en la figura 4 éste ajuste lineal, que si bien se aleja mucho en todo el tiempo
+de ciertos valores, en general se mantiene bien ajustada para las partes que tienen
+mayor acumulación, así que creemos podría producir una predicción decente.
+
+```{r grafica_cuadratica, fig.cap='Ajuste de la tendencia con el modelo cuadrática',fig.width = 10, fig.height = 5,echo=FALSE}
+  t.1<-data.frame(t,yi)
+
+ggplot(t.1, aes(x=t, y=yi)) + 
+  geom_point(size=1) +
+  geom_smooth(method='lm', formula=y~x+I(x^2), se=FALSE, col='tomato') +
+  theme_light()
+
+```
+
+En la figura 5 notamos el ajuste cuadrático y podemos ver que su comportamiento ha mejorado en comparación del anterior, pues podemos notar que la tendencia de los datos parece más polinomial de grado dos que lineal. 
+
+```{r grafica_cubica, fig.cap='Ajuste de la tendencia con el modelo cúbico',fig.width = 10, fig.height = 5,echo=FALSE}
+  ggplot(t.1, aes(x=t, y=yi)) + 
+  geom_point(size=1) +
+  geom_smooth(method='lm', formula=y~x+I(x^2)+I(x^3), se=FALSE, col='tomato') +
+  theme_light()
+```
+
+En la figura 6 vemos como ajusta la curva de grado 3 con la serie, podemos darnos cuenta que el comportamiento de este modelo es más parecido a la tendencia de los datos reales.
+
+```{r grafica_exponencial, fig.cap='Ajuste de la tendencia con el modelo exponencial',fig.width = 10, fig.height = 5,echo=FALSE}
+ggplot(t.1, aes(x=t, y=yi)) + 
+  geom_point(size=1.5) +
+  geom_smooth(method='nls',formula = y~exp(beta0+beta1*x),
+              method.args =list(start=c(beta0=4.509061, beta1=0.001687522)),
+                                    se=FALSE, col='tomato') +
+  theme_light()
+```
+
+Para el caso del modelo exponencial, podemos ver en la figura 7 que el modelo se comporta muy parecido al lineal y no hay un mejoramiento en el ajuste, incluso pareciera haber un empeoramiento. Gráficamente la curva que parece ajustar mejor es el modelo cúbico.
+
+
+Es importante notar que, aunque los modelos pueden no dar un ajuste significativo a la serie de
+tiempo; como es el caso del modelo cuadrático y cúbico que presentan estimaciones de sus
+parámetros que no están al 5% de significancia, lo importante es que el modelo capture la
+tendencia de la serie de tiempo y parece que el cúbico lo hace bien. Así que a continuación
+mostraremos los valores que presentan los criterios AIC y BIC para verificar cuál es el modelo que captura mejor
+la información de las observaciones. 
+
+
+```{r calculo_de_AIC_y_BIC,echo=FALSE}
+AIC.tot = c(AIC(mod.lin), AIC(mod.cuad),AIC(mod.cub), AIC(mod.exp))
+BIC.tot = c(AIC(mod.lin,k=log(length(yi))),AIC(mod.cuad,k=log(length(yi))),AIC(mod.cub,k=log(length(yi))),AIC(mod.exp,k=log(length(yi))))
+
+# Comparar los valores de AIC y BIC para los modelos
+medidas = rbind(AIC.tot, BIC.tot)
+colnames(medidas) = c("lin","cuad","cub","exp")
+rownames(medidas) = c("AIC","BIC")
+
+```
+
+
+```{r mostrarSerie,results='asis',echo=FALSE}
+#results='asis' es para que se tome directamente la de R y marckdown no la modifique
+print(xtable(medidas, digits = 0,caption = "Criterios de AIC y BIC"),comment = FALSE)
+# Para saber como usar xtable vease xtableGallery
+```
+
+
+Después de calcular los estadísticos AIC y BIC y compararlos, podemos ver que, a diferencia de lo que interpretamos en las gráficas, el modelo que mejor ajusta a la serie es el exponencial, pues aunque el modelo que tiene el menor AIC es el cúbico su BIC es el mayor de todos.
+
+Para elegir el mejor modelo tomamos los BIC más pequeños y pasamos a elegir el que tenia un AIC menor.
+
+\pagebreak
+
+\pagebreak
+
+
+# Métodos de promedio.
+
+## Ejemplo 8.2.1 
+
+La tabla 8-2 muestra las ventas de sierras de cierta compañía en el periodo 1988 a 1994. Obtenga la gráfica de los datos; calcule por el método de promedios simples las estimaciones para los cuatro trimestres de 1994; determine el MSE, y enuncie sus conclusiones.
+
+A continuación se muestra la gráfica de la serie:
+
+```{r lectura_de_datos,fig.cap='Venta trimestral de sierras',echo=FALSE}
+database <- read_excel("Ejemplo 8.2.1.xlsx")
+datos <- ts(database$`ventas`,start=1988,frequency=4)
+
+#gráfica de la serie- Figura 8
+plot(datos)
+```
+
+Podemos notar que se comporta de manera cíclica y hay un descenso hasta mediados de 1990 y después de eso se muestra una tendencia en ascenso.
+La siguiente es la estimación por el método de promedio simple para el primer trimestre de 1994:
+
+```{r datos,echo=TRUE}
+t1<- datos[1:24]
+t25 = mean(t1)
+print(paste0("Valor de la estimación t25: ",t25))
+e25 = datos[25] - t25
+print(paste0("Valor del error de la estimación: ",e25)) 
+```
+La siguiente es la estimación por el método de promedio simple para el segundo trimestre de 1994, incluye un punto más de datos (850) que se incorpora a la parte de inicialización de la historia anterior. El pronóstico es :
+
+```{r datos1,echo=TRUE}
+t1<- datos[1:25]
+t26 = mean(t1)
+print(paste0("Valor de la estimación t26: ",t26))
+e26 = datos[26] - t26
+print(paste0("Valor del error de la estimación: ",e26)) 
+```
+
+La siguiente es la estimación por el método de promedio simple para el tercer trimestre de 1994, incluye un punto más de datos (600) que se incorpora a la parte de inicialización de la historia anterior. El pronóstico es :
+
+```{r datos2,echo=TRUE}
+t1<- datos[1:26]
+t27 = mean(t1)
+print(paste0("Valor de la estimación t27: ",t27))
+e27 = datos[27] - t27
+print(paste0("Valor del error de la estimación: ",e27)) 
+```
+
+La siguiente es la estimación por el método de promedio simple para el cuarto trimestre de 1994 incluye un punto más de datos (450) que se incorpora a la parte de inicialización de la historia anterior. El pronóstico es :
+
+```{r datos3,echo=TRUE}
+t1<- datos[1:27]
+t28 = mean(t1)
+print(paste0("Valor de la estimación t28: ",t28))
+e28 = datos[28] - t28
+print(paste0("Valor del error de la estimación: ",e28)) 
+```
+A continuación presentaremos el MSE (el error cuadrático medio) de las proyecciones con el método de promedios simples.
+
+```{r datos4,echo=TRUE}
+y_t <- datos[25:28]
+y_p <- c(t25, t26, t27, t28)
+
+error <- mse(y_t, y_p)
+print(paste0("Valor de la MSE es: ", error))
+```
+Encontramos un MSE muy grande debido a que la estimación puntual esta muy alejada de los valores reales. El método no parece apropiado para estos datos. Éste método debería emplearse cuando los datos son estacionarios: sin tendencia, estacionalidad u otros patrones sistemáticos[@hanke_business_1995].
+
+\pagebreak
+\pagebreak
+
+## Ejemplo 8.2.2.
+
+Con los datos de la tabla 8-2 calcule los pronósticos de promedio móvil desde el primer trimestre de 1993 hasta el primero de 1995, tanto con la ecuación de Hanke como con la de Quispe. Calcule el MSE de ambos pronósticos. Grafique la serie original y las dos estimadas y discuta sus conclusiones.
+
+En la figura 9 se muestra la gráfica de los datos de la serie.
+
+```{r grafica1_ejemplo8.2.2, fig.cap='Venta trimestral de sierras', echo=FALSE}
+#gráfica de la serie- Figura 9
+plot(datos)
+```
+
+A continuación calculamos los promedios móviles con la ecuación de Hanke : 
+
+```{r promedio_movil_Hanke, echo=TRUE}
+t1<- datos[17:28]
+
+mean_mov <- rollmean(t1, 4,  align = "right")
+
+for(i in 21:29){
+  print(paste0("EL valor de t", i, " es igual a : ", mean_mov[i-20]))
+}
+```
+Calculamos el MSE de la ecuación de Hanke para t21 hasta t28:
+
+```{r mse_Hanke, echo=TRUE}
+y_t<- datos[21:28]
+y_p <-mean_mov[1:8]
+
+error <- mse(y_t, y_p)
+print(paste0("Valor de la MSE es: ", error))
+
+```
+
+En la Figura 10 podemos observar la comparación de los valores reales del primer trimestre de 1993 al segundo trimestre de 1994, con los valores pronosticados por el método de Hanke.
+
+```{r pronos_graejemplo8.2.2, fig.cap='Metodo de Hanke', echo=FALSE}
+#gráfica de la serie- Figura 10
+plot.ts(t1,axes = FALSE)
+axis(2)
+par(new=T)
+plot(mean_mov, col= "blue", xlab ="", ylab = "")
+```
+
+Calculamos los promedios móviles con la ecuación de Quispe hasta t26 debido a que se requieren datos adicionales para cálculos de los próximos periodos de tiempo.
+
+```{r promedio_movil_Quispe, echo=TRUE}
+t1<- datos[19:28]
+y_q <- c()
+
+for(i in 3:8){
+  y_q[i-2] = ((1/2)*t1[i-2] + t1[i-1] + t1[i] + t1[i+1] + (1/2)*t1[i+2])/4
+  print(paste0("EL valor de t", i+18, " es igual a : ", y_q[i-2]))
+}
+
+```
+
+Calculamos el MSE de la ecuación de Quispe para t21 hasta t26:
+
+```{r mse_Quispe, echo=TRUE}
+y_t<- datos[21:26]
+y_p <- y_q
+
+error <- mse(y_t, y_p)
+print(paste0("Valor del MSE es: ", error))
+
+```
+
+
+```{r grafica2_quispe, fig.cap='Grafica de los pronosticos realizados por el metodo Quispe', echo=FALSE}
+#gráfica de la serie- Figura 11
+plot.ts(t1,axes = FALSE)
+axis(2)
+par(new=T)
+plot(y_q, col= "blue",axes = FALSE, xlab ="", ylab = "")
+```
+
+
+En la Figura 11 podemos observar la comparación de los valores reales del primer trimestre de 1993 al segundo trimestre de 1994, con los valores pronosticados por el método Quispe.
+
+Como podemos observar, el error cuadrático medio tanto en el Método de Hanke como en el de Quispe han reducido a comparación del método de promedios simple, ya que podemos ver que las estimaciones puntuales no están muy alejadas de los valores reales. Además observamos que por el método de Hanke logramos obtener mas pronósticos que por el método de Quispe. 
+
+\pagebreak
+\pagebreak
+
+## Ejemplo 8.2.3
+
+La tabla 8-3 muestra las rentas por semana de Movie Video Store (15 datos). Elija un orden de promedio móvil adecuado y calcule todos los pronósticos posibles con este método. Posteriormente, obtenga todos los pronósticos posibles con el promedio móvil doble. Determine el MSE. Grafique las tres series y discuta sus conclusiones.
+
+En la figura 12 se muestra la gráfica de los datos de la serie. 
+Como podemos ver la gráfica muestra un comportamiento lineal con una tendencia ascendente marcada.  
+
+```{r datos_ejemplo8.2.3, fig.cap='Grafica de rentas por semana de Movie Video Store', echo=FALSE}
+database <- read_excel("Rentas por semana de Movie store(1).xlsx")
+datos <- ts(database$`rentas`) 
+  
+#gráfica de la serie- Figura 12
+plot.ts(datos)
+
+```
+
+En este punto calculamos los promedio móviles dobles mostrando el método paso a paso y
+en el cuadro 2 vemos los resultados de los cálculos; debido a que el valor de los errores de cada pronóstico son pequeños, podemos decir que sus valores no están muy alejados de los reales. Además el error cuadrático medio que se muestra al final de los pasos no es muy grande en comparación a los datos que tenemos.
+
+```{r originalxd, echo=TRUE}
+
+m = c()
+m_p = c()
+# Cálculo del promedio móvil
+for(i in 4:16){
+  m[i-1] = (datos[i-1]+datos[i-2]+datos[i-3])/3
+}
+ # Cálculo del promedio móvil doble
+for(i in 6:16){
+  m_p[i-1] = (m[i-1]+m[i-2]+m[i-3])/3
+}
+
+#Cálculo de parametros
+a = 2*m - m_p
+
+b = (m - m_p)
+
+p = 1
+#Cálculo de pronóstico
+y = (a + b*p)
+
+# Cálculo de error
+e<-c()
+for(i in 6:15){
+  e[i] = datos[i]-y[i-1]
+}
+
+error=mse(datos[5:15],y[5:15])
+error
+```
+
+```{r movilTabla,results='asis',echo=FALSE}
+# Ajuste para el data frame
+y=insert(y,5,values=NA)
+d=insert(datos[1:15],16,values=NA)
+m=insert(m,16,values=NA)
+m_p=insert(m_p,16,values=NA)
+a=insert(a,16,values=NA)
+b=insert(b,16,values=NA)
+e[5]=NA
+e1=insert(e[1:15],16,values=NA)
+error <- mean((e[6:15])^2) 
+
+movil<-data.frame(d,m,m_p,a,b,y,e1)
+colnames(movil)<-c("Observaciones","M","M'","a","b","Pronóstico","Error")
+print(xtable(movil,caption="Promedios moviles dobles"),comment=FALSE)
+# cuadro 2
+```
+
+
+
+```{r grafica2_promedios_m, fig.cap='Grafica de los pronosticos realizados por promedios moviles', echo=TRUE}
+#gráfica de la serie- Figura 11
+plot.ts(datos,axes = FALSE)
+axis(2)
+par(new=T)
+plot(m, col= "red",axes = FALSE, xlab ="", ylab = "")
+# Figura 13
+```
+
+En la figura 13 vemos que el promedio móvil da una aproximación aceptable.
+
+```{r grafica2_promedios_md, fig.cap='Grafica de los pronosticos realizados por promedios moviles dobles', echo=TRUE}
+
+plot.ts(datos,axes = FALSE)
+axis(2)
+par(new=T)
+plot(m_p, col= "red",axes = FALSE, xlab ="", ylab = "")
+# Fiugra 14
+```
+
+Ya en los promedios móviles dobles(Figura 14) se puede ver con mayor notoriedad que los mejores pronósticos son los más recientes; aunque no tendría por que ser así necesariamente, pues todos toman la misma cantidad de datos.
+
+```{r grafica2_promedios_y, fig.cap='Grafica de los pronosticos', echo=TRUE}
+plot.ts(datos,axes = FALSE)
+axis(2)
+par(new=T)
+plot(y, col= "red",axes = FALSE, xlab ="", ylab = "")
+# Fiugra 15
+```
+
+Ya en la figura 15 vemos el pronóstico final con promedios móviles dobles y las formulas
+para predecir que aglomeran la información total que tenemos. En ésta gráfica notamos
+una notable mejoría a las dos anteriores(aunque la segunda jamas tuvo el propósito de
+predecir), en especifico notamos que los últimos valores registrados nos ofrecen una muy
+buena aproximación. Además retomando lo obtenido con el MSE esto tiene mucho
+sentido, pues el MSE nos dio un valor que nos brinda cierta seguridad si quisiéramos utilizar
+este modelo y la gráfica lo corrobora.
+
+
+\pagebreak
+\pagebreak
+
+
+
+
+# Suavizado exponencial simple
+
+## Ejemplo 8.3.1
+
+Para este ejemplo, se trabaja con los datos de la tabla 8-2. Grafique los
+datos e identifique si hay tendencia o patrón estacional; asimismo, describa el
+comportamiento de la media de la serie. Auxíliese de Excel para estimar toda la serie
+aplicando el método de suavización exponencial con $\alpha=.01$. Calcule el pronóstico puntual
+y el intervalo de confianza para los cuatro trimestres de 1995. Utilice un paquete
+estadístico, preferentemente R, para resolver el mismo problema, pero asegúrese de
+utilizar el $\alpha$ óptimo. Compare los MSE de ambos modelos y discuta sus conclusiones.
+
+
+Mostramos en la figura 16 la gráfica de la serie de tiempo en la que podemos
+apreciar un cambio en la media pero no una tendencia marcada, por lo que
+tentativamente podemos usar el método de suavización exponencial.
+
+```{r graficaSuavizado1,fig.cap="Gráfica de serie de tiempo de venta de sierras",echo=FALSE}
+database <- read_excel("Ejemplo 8.2.1.xlsx")
+datos <- ts(database$`ventas`,start=1988,frequency=4)
+plot(datos)
+# Figura 16
+```
+
+Ahora mostramos en la figura 17 y 18 lo que se hizo en una hoja de cálculo.  En ésta encontramos los pronósticos por el método de suavización exponencial
+y encontramos el valor optimo de $\alpha$ con ayuda del algoritmo de LibreOffice Calc. También notamos unos intervalos de confianza demasiado grandes para
+los pronósticos.
+
+![Hoja de calculo](suavizado1.png)
+
+![Hoja de calculo con pronóstico](suavizado2.png)
+
+Continuamos reproduciendo el mismo procedimiento que en la hoja de cálculo.
+
+```{r hojaSuavizado,echo=TRUE}
+lambda<-c()
+alpha<-0.273884
+lambda[1]<-mean(datos[1:14]) # lambda[1]=lambda0,  en general lambda[i]=lambdai-1
+for (i in 1:28){
+  lambda[i+1]<-(datos[i]*alpha)+((1-alpha) * lambda[i])
+}
+pronostico<-lambda
+error<- datos[1:28]-pronostico[1:28]
+SE<-error^2
+SSE<-sum(SE)
+SSE
+```
+Con el código mostrado obtuvimos el mismo valor para la suma de cuadrados del
+error que con la hoja de cálculo, ahora procedemos a hacer el cálculo
+de los pronósticos a futuro.
+
+```{r futuroSuavizado,echo=TRUE}
+futuro<-c()
+futuro[1:4]<-lambda[29] # Los primeros 4 trimestres de 1995
+s<-sqrt(SSE/27)
+
+int_c_i<-c()
+int_c_s<-c()
+for(t in 1:4){
+  int_c_s[t]<-futuro[t]+(1.96*s*sqrt(1+((t-1)*alpha*alpha)))
+  int_c_i[t]<-futuro[t]-(1.96*s*sqrt(1+((t-1)*alpha*alpha)))
+}
+nuevo<-data.frame(1:4,futuro,int_c_i,int_c_s)
+colnames(nuevo)<-c("Tau","Pronóstico","Limite inferior","Limite superior")
+```
+
+```{r nuevoTablaCuadro3,results='asis',echo=FALSE}
+print(xtable(nuevo,caption="Pronósticos"),comment=FALSE)
+# cuadro 3
+```
+
+Como vemos en el cuadro 2 los valores del pronóstico también son los mismos
+que los obtenidos en la hoja de cálculo. El método, después de todo esto,
+no nos parece adecuado, por el intervalo de confianza que "no da mucha
+confianza" pues es demasiado grande para los valores que maneja la series, a este
+punto casi sería mejor un promedio simple pues nos ahorraría mucho trabajo.
+
+
+
+
+## Ejemplo 8.3.2
+
+Los datos de la tabla 8-4 corresponden a 24 periodos de la pesca mensual
+de bacalao en la Bay City Seafood Company. Grafique los datos e identifique si hay
+tendencia o patrón estacional; asimismo, describa el comportamiento de la media de la
+serie. Auxíliese de Excel para estimar toda la serie aplicando el método de suavización
+exponencial con $\alpha=0.1$. Calcule el pronóstico puntual y el intervalo de confianza para los
+periodos 25, 26 y 27. Utilice un paquete estadístico, preferentemente R, para resolver el
+mismo problema, pero asegúrese de utilizar el $\alpha$ óptimo. Compare los MSE de ambos
+modelos y discuta sus conclusiones.
+
+Mostramos en la figura 19 la gráfica de la serie de tiempo en la que podemos ver que la media no cuenta con variación, por lo que podemos usar el método de suavización exponencial.
+
+```{r graficapesca,fig.cap="Gráfica de serie de tiempo de venta de sierras",echo=FALSE}
+database <- read_excel("Ejemplo 8.3.2 1.xlsx")
+pesca <- ts(database$`Pesca`)
+plot(pesca)
+# Figura 19
+```
+
+En la figura 20 y 21 se muestran los cálculos que se realizaron en una hoja de cálculo para encontrar pronósticos por el método de suavización exponencial y encontrar el valor optimo de $\alpha$ con ayuda del algoritmo de LibreOffice Calc, el cual fue de 0.034. También notamos que los intervalos de confianza no son demasiado grandes para los pronósticos.
+
+
+![Hoja de calculo pesca](Pesca1.png)
+
+![Hoja de cálculo pronostico](Pesca2.png)
+
+Continuamos reproduciendo el mismo procedimiento que en la hoja de cálculo.
+
+```{r SuavizadoPesca,echo=TRUE}
+lambda<-c()
+alpha<-0.034
+lambda[1]<-mean(pesca[1:12]) # lambda[1]=lambda0,  en general lambda[i]=lambdai-1
+for (i in 1:24){
+  lambda[i+1]<-(pesca[i]*alpha)+((1-alpha) * lambda[i])
+}
+pronostico<-lambda
+error<- pesca[1:24]-pronostico[1:24]
+SE<-error^2
+SSE1<-sum(SE)
+SSE1
+```
+Con el código mostrado se obtuvo el mismo valor para la suma de cuadrados del error que con la hoja de cálculo, ahora procedemos a hacer el cálculo de los pronósticos a futuro.
+
+```{r futuropescado,echo=TRUE}
+futuro1<-c()
+futuro1[1:3]<-lambda[25] # Periodos 25,26,27
+
+s1<-sqrt(SSE1/23)
+int_c_i<-c()
+int_c_s<-c()
+for(t in 1:3){
+  int_c_s[t]<-futuro1[t]+(1.96*s1*sqrt(1+((t-1)*alpha*alpha)))
+  int_c_i[t]<-futuro1[t]-(1.96*s1*sqrt(1+((t-1)*alpha*alpha)))
+}
+
+nuevo1<-data.frame(1:3,futuro1,int_c_i,int_c_s)
+colnames(nuevo1)<-c("Tau","Pronóstico","Limite inferior","Limite superior")
+```
+
+```{r nuevoTabla,results='asis',echo=FALSE}
+print(xtable(nuevo1,caption="Pronósticos tabla"),comment=FALSE)
+# cuadro 4
+```
+
+\pagebreak
+\pagebreak
+
+## Actividad 8.2
+
+Siempre que nos encarguemos de hacer pronósticos de cualquier cosa será necesario medir el error que genera el modelo usado
+para tal pronóstico, por que jamás encontraremos un modelo que pronostique con el cien por ciento de efectividad. Debido a ésto
+tenemos diversas formas de calcular errores que son adaptables a casi cualquier modelo, como lo son el **error cuadrado medio** o
+simplemente promediar los errores obtenido; sin embargo es razonable pensar que un modelo para pronosticar pude ser medido de mejor forma
+si se usan criterios específicos para ese modelo, este es el caso del modelo de **suavización exponencial simple** que cuenta con dos
+criterios para medir el error. Los cuales son el **error de la suma acumulada simple **; que es un cociente entre la suma de los errores
+y desviación absoluta de la media suavizada(desviación de la media del error), y el cual cuenta con la ventaja de que este
+cociente tiene unos limites de aceptación dependiendo del alpha elegido, lo que ayuda a entender sin mucha subjetividad si el modelo es
+bueno o no, y el **indicio de error suavizado**, que cambia del anterior al sustituir la suma de errores en el numerador
+por el error del pronóstico suavizado de un solo periodo siguiente, que usa aún más el alpha elegido pues se encuentra la suavización
+también en el error del pronóstico que se coloca en el numerador.
+
+Ambos criterios pueden ayudar a discernir en la elección del modelo y dependiendo la situación uno será más útil que el otro; por
+ejemplo si bien el segundo es más tardado da una mejor noción del desempeño de los errores puesto que toma los errores más directamente.Aún
+así estos criterios ya no son tan usados hoy en día, [@bowerman_pronosticos_2007] mencionaba que ya en 2007 eran poco usados por el
+poder de computo, ahora que ese poder se ha incrementado mucho más, menos usados serán, aunque eso no quiere decir que sean obsoletos
+del todo pues si estas haciendo un modelo pequeño o bien tu poder de computo no es tan grande tal vez prefieras usar alguno de estos
+criterios antes de probar centenares de modelos para ver cuál funciona mejor.
+
+\pagebreak
+\pagebreak
+
+
+# Suavizado exponencial doble: Método de Brown
+
+## Ejemplo 8.4.1
+
+En el caso de Movie Video Store (tabla 8-3), ¿considera que es pertinente
+utilizar el suavizado exponencial doble? ¿Por qué? Utilice software para aplicar dicho
+método; compare el MSE con el de los métodos de promedios móviles, y discuta sus
+conclusiones.
+
+```{r cargar_graf_movie,fig.cap="Movie Video Store",echo=FALSE}
+database <- read_excel("Rentas por semana de Movie store(1).xlsx")
+datos <- ts(database$`rentas`) 
+# Figura 22
+plot(datos)
+```
+
+La figura 22 muestra la gráfica con una tendencia lineal por lo que el
+método de suavizado exponencial doble le viene a la perfección.
+
+A continuación presentamos el procedimiento para realizar estos cálculos.
+
+```{r calculosExpSuavDob,echo=TRUE}
+lambda<-c()
+lambda[1]=mean(datos[1:6]) # lambda[i]=lambdai-1
+alpha=0.4
+
+prono<-function(alpha,p,datos){
+
+  for (i in 1:15){
+  lambda[i+1]=( alpha*datos[i] )+ ( (1-alpha)*lambda[i] )
+  }
+  A=lambda[1:15]
+  A_p<-c()
+  A_p[1]=mean(A[1:8])
+
+  for (i in 1:15){
+    A_p[i+1]=( alpha*A[i] )+ ( (1-alpha)*A_p[i] )
+  }
+
+  a=2*A-A_p[1:15]
+  b=( alpha*(A-A_p[1:15]) )/( 1-alpha )
+
+  y<-a+b*p
+  y
+}
+
+mejor_alpha<-function(p,datos){
+  alpha=0
+  al=alpha
+  mini=1000000000
+  while(alpha<=1){
+    inc=0.001
+    y<-prono(alpha,p,datos)
+    SSE<-sse(datos,y)
+    if(SSE<mini)
+    {
+      mini=SSE
+      al=alpha
+    }
+    alpha=alpha+inc
+  }
+  al
+}
+alpha=0.267
+y<-prono(alpha,1,datos)
+```
+
+
+Encontramos con la función *mejor_alpha* el valor de $\alpha$ que minimiza la
+suma de cuadrados del error para el método de la suavización exponencial doble.
+Mostramos en la figura 23 que tan bien aproxima esta estimación a la original,
+y hay que decir que es bastante buena.
+
+```{r graficaSuavExpDob, fig.cap="Suavizado doble",echo=FALSE}
+#Figura 23
+plot(datos)
+par(new=T)
+plot(y,axes=FALSE,xlab="",ylab="",col="blue")
+```
+
+```{r calcularMSESED,echo=TRUE}
+mse(datos,y)
+```
+
+Para comparar el valor medio cuadrado de este método con el de promedios móviles dobles
+calculamos el MSE de este modelo y nos da el valor de 75.75543 que es mayor al
+obtenido en el método anterior que es de 41.29966. Podemos concluir de esto que
+a pesar de que después de ver la gráfica pensamos que el método de Brawn funcionaba mejor, la realidad es que no y adjudicamos esto a que el método de Brawn
+tiene aproximaciones muy buenas y otras muy malas mientras que el de promedios móviles dobles se mantiene en estimaciones malas.
+
+
+
+
+\pagebreak
+\pagebreak
+
+
+# Método de dos parametros de Holt.
+
+## Ejemplo 3.5.1. 
+
+Apóyese en Excel para aplicar el método de Holt al pronosticar el periodo 25 de la serie en el caso de la Acme Tool Company (tabla 8-2); utilice $\alpha = 0.3$, $\beta = 0.1$, 0 como valor inicial de la tendencia y $y_{1}$ como valor inicial para el algoritmo recursivo. Posteriormente, utilice software para aplicar el método de Holt con las asignaciones óptimas de $\alpha$ y $\beta$. Grafique las series, compare el MSE y discuta sus conclusiones.
+
+Presentamos en la figura 24 la gráfica de la serie:
+
+```{r graficaSerie_Holt, fig.cap='Grafica serie Holt',echo=FALSE}
+
+#Grafica24 
+
+database <- read_excel("Ejemplo 8.2.1.xlsx")
+datos <- ts(database$`ventas`,start=1988,frequency=4)
+
+#gráfica de la serie- Figura 8
+plot(datos)
+
+```
+
+Con ayuda de una hoja de cálculo realizamos el pronóstico del periodo $y_{25}$ y el MSE con $\alpha = 0.3$ y $\beta = 0.1$.
+
+
+![Hoja_de_calculo_Metodo_Holt](Holt_excel.png)
+
+
+Obteniendo los valores de:
+  - $y_{25} = 577.6488808$ 
+  - $MSE = 21448.34628$ 
+
+Ahora con ayuda de R realizaremos el método de Holt con las asignaciones óptimas de $\alpha$ y $\beta$ .
+
+```{r Holt_R, fig.cap='Gráfica método Holt',echo=TRUE}
+
+Holt(datos, alpha = 0.3, beta = 0.1, lead = 1, plot = TRUE)
+
+```
+
+En la figura 26 podemos observar que la tendencia de las aproximaciones obtenidas por 
+el método de Holt se mantiene a la tendencia de la tendencia original. Además obtuvimos el MSE de 2.509990e+04 en R que es ligeramente mas elevado que el que se obtuvo en la hoja de cálculo. Debido a que existen valores que se encuentran cerca del valor real a diferencia de otros valores aproximados que se alejan el valor real. Podemos concluir que es un método adecuado para realizar pronósticos debido a que el error de aproximación de cada una de las observaciones no es muy elevado.
+
+
+
+
+
+
+
+
+
+
+# Actividad 8.3
+
+## Preguntas
+
+1- ¿Qué técnica de pronóstico revisa constantemente una estimación a la luz de la experiencia más reciente? Método de atenuación exponencial
+
+2- ¿Qué técnica de pronóstico usa el valor del periodo actual como el pronóstico del siguiente periodo?  modelos no formales
+
+3- ¿Qué técnica asigna igual ponderación a cada observación? Promedios móviles y simples
+
+4- ¿Qué técnica se debe emplear si los datos tienen tendencia? Método de Brown y de Holt (ambos métodos con tendencia lineal)
+
+5- ¿Qué técnica se debe emplear si los datos son estacionales? Promedios móviles simples, ya que, al agarrar un periodo de 12, capturas la estacionalidad anual de la serie.
+
+## (6) La Apex Mutual Fund invierte principalmente en acciones de tecnologIa. Los valores de posesión neta del fondo al final de cada mes de 1994.
+
+```{r actividadGraf1,fig.cap="Apex Mutual Fund",echo=FALSE}
+# Figura 27 
+datos<-read_excel("Actividad 8.3 -6.xlsx")
+datos<-ts(datos$Precio )
+datos<-datos[-c(6)]
+datos<-ts(datos )
+plot(datos)
+```
+
+En la figura 27 podemos apreciar la gráfica de la serie.
+
+
+a. Encuentre el valor del pronóstico para la Mutual Fund, para cada mes, empleando un modelo no formal . El valor para diciembre de 1993 fue 19.00. 
+
+Para esto utilizaremos el modelo no formal más simple mostrado
+que no es otro que el de $\hat{y}_{t+1}=y_{t}$ y que mostramos
+a continuación.
+
+```{r 6noFormal,echo=FALSE}
+anterior<-19.00
+prono<-c(anterior,datos)
+tabla<-data.frame(1:13,insert(datos[1:12],13,values=NA),prono)
+colnames(tabla)<-c("Meses","Observaciones","Pronóstico")
+```
+
+```{r 6noFormalmostrarSerie,results='asis',echo=FALSE}
+print(xtable(tabla, digits = 0,caption = "Pronóstico"),comment = FALSE)
+# Cuadro 5
+```
+
+En el cuadro 5 podemos apreciar un pronóstico bastante simplón pero que pude servir.
+
+```{r creacionFunctions,echo=FALSE}
+mad<-function(observed,predicted){
+  n<-length(observed)
+  sum=0
+  for(i in 1:n){
+    sum=sum+abs(observed[i]-predicted[i])
+  }
+  r<-sum/n
+  r
+}
+pema<-function(observed,predicted){
+  n<-length(observed)
+  sum=0
+  for(i in 1:n){
+    sum=sum+(abs(observed[i]-predicted[i])/observed[i])
+  }
+  sum/n
+}
+pme<-function(observed,predicted){
+  n<-length(observed)
+  sum=0
+  for(i in 1:n){
+    sum=sum+( (observed[i]-predicted[i]) /observed[i])
+  }
+  sum/n
+}
+```
+
+b. Evalúe el método de pronóstico mediante DAM 
+```{r dam16NoForm,echo=TRUE}
+d<-as.numeric(datos[1:12])
+p<-as.numeric(prono[1:12])
+mad(d,p)
+```
+La desviación absoluta media no es muy grande pero considerable considerando la variación de los datos, pues los valores se encuentran entre 17 y 22.
+
+c. Evalúe el método de pronóstico mediante EMC 
+
+```{r emc6noform,echo=TRUE}
+mse(d,p)
+```
+El MSE es extrañamente similar a la desviación media y esto puede ser por que los errores son menores que 1 cuando se elevan al cuadrado se hacen más pequeños.
+
+
+d. Evalúe el método de pronóstico mediante PEMA 
+
+```{r pema6NoForm,echo=TRUE}
+MAPE(d,p)
+```
+El PEMA nos muestra que los errores no son muy grandes comparado con lo que se tiene en la serie, lo que es congruente con lo que ya teníamos.
+
+
+e. Evalúe el método de pronóstico mediante PME 
+
+```{r pme6NoForm,echo=TRUE}
+pme(d,p)
+```
+
+Vemos que el valor es cercano a cero, por lo que podemos decir que el método se equivoca igual.
+
+
+f. Pronostique el precio de la Mutual Fund para enero de 1995. 
+
+El pronóstico esta en el cuadro 5 y es la tupla número 13
+con un valor de $22.14$.
+
+g. Escriba un memorando resumiendo sus apreciaciones. 
+
+Pues después de todo esto vemos que al menos el método se equivoca de forma igualitaria y que los errores no son muy grandes respecto al espacio muestral de lo datos, así  que el método para está ocasión funciona bastante bien.
+
+\pagebreak
+
+## (7)Con referencia al problema 6, utilice un promedio móvil de tres meses para pronosticar el precio de la Mutual Fund para enero de 1995. ¿Es este pronóstico mejor que el fommlado con el método no formal? 
+
+```{r promedio_movil_act_8.3, echo=TRUE}
+t1=as.numeric(datos) 
+
+mean_mov <- rollmean(t1, 3,  align = "right")
+
+for(i in 4:13){
+  print(paste0("EL valor de t", i, " es igual a : ", mean_mov[i-3]))
+}
+
+mse(t1[4:12],mean_mov[1:9]) 
+```
+
+Utilizando el método de promedios móviles de tres meses, obtenemos un error mayor en comparación con el método no formal, por lo que el pronóstico mas adecuado para esta serie es el método no formal.
+
+## (8) Ejercicio 8
+
+Dada la serie siguiente:
+
+a. ¿Cuál es el pronóstico para el periodo 8 utilizando un promedio móvil de 5 meses?
+
+```{r promedio_movil_act_8.3_Hanke_8, echo=TRUE}
+datos<-read_excel("Actividad 8.3 Hanke 8.xlsx")
+datos<-ts(datos$datos )
+t1=as.numeric(datos) 
+mean_mov <- rollmean(t1, 5,  align = "right")
+
+for(i in 6:9){
+  print(paste0("EL valor de t", i, " es igual a : ", mean_mov[i-5]))
+}
+
+error = datos[8] - mean_mov[3]
+print(paste0("EL valor del error del pronóstico para el periodo 8 es de: ", error))
+ 
+```
+
+El valor del pronóstico no esta muy alejado del valor verdadero para el periodo 8; tiene un valor de 219, con un error de 7.  
+
+b. Si se emplea una constante de atenuación de 0.4, ¿cuál sería el pronóstico de atenuación exponencial para el periodo 4?
+
+```{r pronostico_atenuacion_act_8.3_Hanke_8, echo=TRUE}
+#Metodo de suavización exponencial
+
+suavizadoExpSimp<-function(datos,alpha,ini){ # ini es el valor inicial
+  n=length(datos)
+  lambda<-c()
+  lambda[1]<-ini
+  for (i in 1:n){
+    lambda[i+1]<-(datos[i]*alpha)+((1-alpha) * lambda[i])
+  }
+  lambda  # Para fines practicos lambda[i] es la estimación de y[i]
+}
+
+svexp=suavizadoExpSimp(datos,0.4,100)
+svexp
+print(paste0("EL valor del pronóstico para el periodo 4 es de: ", svexp[4]))
+```
+
+c. En el apartado b, ¿cuál sería el error de pronóstico para el periodo 3?
+
+```{r pronostico_atenuacion_error_act_8.3_Hanke_8, echo=TRUE}
+error = c(datos - svexp[1:8])
+print(error)
+error = datos[4] - svexp[4]
+print(paste0("EL valor del error del pronóstico para el periodo 4 es de: ", error))
+
+print(paste0("MSE de promedio movil: ", mse(t1[6:8],mean_mov[1:3])))
+print(paste0("MSE de atenuación exponencial: ", mse(t1,svexp[1:8])))
+```
+
+El valor del pronóstico utilizando atenuación exponencial está alejado del valor verdadero para el periodo 4; tiene un valor de 186.8, con un error de 29.2.
+Podemos notar que debido al valor inicial los primeros periodos están muy alejados del valor real de la serie pero, conforme avanza el periodo, su comportamiento mejora notablemente.
+Tomando en cuenta el MSE de cada método y lo antes mencionado, resulta ser un mejor pronóstico el de medias móviles para esta serie.
+
+
+## Ejercicio 9
+
+Mostramos en la figura 28 la gráfica de la serie del bono de obligación general que muestra una tendencia
+ascendente en el principio.
+
+
+```{r figEje9Hanke,fig.cap="Bono de obligación general",echo=FALSE}
+datos<-c(9.29,9.99,10.16,10.25,10.61,11.07,11.52,11.09,10.80,10.50,10.86,9.97)
+t1<-ts(datos)
+plot(t1)
+#Figura 28
+```
+
+a. El valor del pronóstico para los meses a partir de Abril se muestra calculado por el método de los
+promedios móviles a continuación.
+
+```{r calculo9yo,echo=TRUE}
+
+mean_val<-rollmean(t1[1:12],3,align = "right")
+
+for(i in 4:12){
+  print(paste0("El valor del pronostico para i=",i," "))
+  print(mean_val[i-3])
+}
+```
+
+b. Repitiendo el proceso pero ahora para 5 meses en el promedio móvil tenemos:
+
+```{r calculo9yo1,echo=TRUE}
+
+mean_val1<-rollmean(t1[1:12],5,align = "right")
+
+for(i in 6:12){
+  print(paste0("El valor del pronostico para i=",i," "))
+  print(mean_val[i-5])
+}
+```
+
+c. Evaluación de los modelos mediante DAM.
+
+```{r evalDAM9Prob,echo=TRUE}
+print("DAM para modelo de 3 meses")
+mad(datos[4:12],mean_val[1:9])
+```
+
+
+```{r evalDAM9Prob2part,echo=TRUE}
+print("DAM para modelo de 5 meses")
+mad(datos[6:12],mean_val[1:7])
+```
+
+d. Evaluación de los modelos con EMC
+
+```{r evalEMC9Probpart1,echo=TRUE}
+print("EMC para modelo de 3 meses")
+mse(datos[4:12],mean_val[1:9])
+```
+
+```{r evalEMC9Probpart2,echo=TRUE}
+print("EMC para modelo de 5 meses")
+mse(datos[6:12],mean_val[1:7])
+```
+
+
+e. Evaluación de los modelos con PEMA
+
+```{r evalPEMA9Probpart1,echo=TRUE}
+print("PEMA para modelo de 3 meses")
+pema(datos[4:12],mean_val[1:9])
+```
+
+
+```{r evalPEMA9Prob2part,echo=TRUE}
+print("PEMA para modelo de 5 meses")
+pema(datos[6:12],mean_val[1:7])
+```
+
+
+f. Evaluación de los modelos con PME
+
+```{r evalPME9Probpart1,echo=TRUE}
+print("PMEpara modelo de 3 meses")
+pme(datos[4:12],mean_val[1:9])
+```
+
+
+```{r evalPME9Prob2part,echo=TRUE}
+print("PME para modelo de 5 meses")
+pme(datos[6:12],mean_val[1:7])
+```
+
+g. Pronostique el rendimiento para enero de 1995 con el mejor método.
+
+En este caso el mejor método es el de los 3 meses, pues tiene menor sesgo así como sus errores son menores.
+Por lo que el pronóstico para enero de 1995 es tiene el valor de $10.44333$, rescatado del método que
+usa 3 meses.
+
+h. Conclusiones finales
+
+Al fin en esté punto si se cumplieron nuestras suposiciones, pues sabíamos por lo leído que en general una menor cantidad para el periodo da mejores resultados en este método y en este caso particular lo corroboramos, donde
+el ejemplo más claro de mejoría del de 3 meses al de 5 lo da el PEMA que muestra que el porcentaje de desviación
+respecto de la muestra de los datos y los pronósticos es muy poca, cercana a cero.
+
+
+
+## Ejericio 10
+
+Esta pregunta se refiere al problema 9. Utilice la atenuación atenuación exponencial con una constante de atenuación de 0.2 y un valor inicial de 9.29, para pronosticar el rendimiento de enero de 1995. ¿Es este pronóstico mejor que el realizado mediante el modelo de promedio móvil?
+
+
+```{r setupDemanda, fig.cap="Suavizado exponencial de Demandas",echo=FALSE}
+database <- read_excel("Ejercicio 8.3-10.xlsx")
+demanda <- ts(database$`Demanda`)
+#figura 29
+plot(demanda)
+```
+
+
+
+En la figura 29 se visualiza la gráfica de la serie de tiempo. En la cual podemos observar una tendencia creciente además de que la serie no cuenta con estacionalidad. 
+
+```{r MétodoSuavizadoDemandas,echo=TRUE}
+
+alpha<-0.2
+ini<- 9.29
+
+suavizadoExpSimp<-function(demanda,alpha,ini){ # ini es el valor inicial
+  n=length(demanda)
+  lambda<-c()
+  lambda[1]<-ini
+  for (i in 1:n){
+    lambda[i+1]<-(demanda[i]*alpha)+((1-alpha) * lambda[i])
+  }
+  lambda
+}
+lambda<-suavizadoExpSimp(demanda,alpha,ini)
+pronostico<-lambda
+error<- demanda[1:12]-pronostico[1:12]
+
+SE<-error^2
+SSE<-sum(SE)
+print(paste0("La suma de cuadrados del error es: ",SSE))
+
+print(paste0("El valor del pronótico correspondiente al rendimiento de enero de 1995 es: ",lambda[13]))
+
+
+```
+
+
+```{r graficaSuavDemanda, fig.cap="Suavizado exponencial de las Demandas",echo=FALSE}
+#Figura 30
+plot(demanda)
+par(new=T)
+plot(pronostico,axes=FALSE,xlab="",ylab="",col="blue")
+```
+
+
+Podemos observar que la suma de cuadrados del error es 6.6821. Además podemos observar en la Figura 30 que los valores pronosticados se encuentran muy alejados de los valores reales, por lo que contamos con una suma de cuadrados de error elevado.
+
+Comparando el método de promedio móvil con el método de atenuación simple, podemos observar que la suma de cuadrados del error es menor por el método de promedio móvil al ser de 0.31. Al ser una diferencia demasiado elevada podemos concluir que el mejor método a seguir es el de promedio móvil. 
+
+## Ejercicio 11
+
+En la figura 31 mostramos la serie tiempo de las demandas mensuales de la Hughes Supply Company que
+muestra tal vez un poco de tendencia.
+
+```{r graficaSupply,fig.cap="Serie de tiempo Hughes Supply Company",echo=FALSE}
+datos<-c(205,251,304,284,352,300,241,284,312,289,385,256)
+t1<-ts(datos)
+plot(t1)
+# Figura 31
+```
+
+Con el método de atenuación exponencial con un $\alpha=0.5$ y un valor inicial de 205 obtuvimos los siguientes
+resultados.
+
+```{r sluppyAtenuacionExp,echo=TRUE}
+
+suavizadoExpSimp<-function(datos,alpha,ini){
+  n=length(datos)
+  lambda<-c()
+  lambda[1]<-ini # lambda[1]=lambda0,  en general lambda[i]=lambdai-1
+for (i in 1:n){
+  lambda[i+1]<-(datos[i]*alpha)+((1-alpha) * lambda[i])
+}
+lambda  # Para fines practicos lambda[i] es la estimación de y[i]
+}
+
+prono<-suavizadoExpSimp(t1,0.5,205)
+print("Pronóstico para enero de 1995")
+prono[13]
+```
+
+El pronóstico parece consistente con los datos vistos, al menos a interpretación a *ojo*.
+
+
+## Ejercicio 12
+
+La General American American Investors Co., una compañía regulada de administración de inversiones,
+invierte principalmente en acciones de calidad media y alta. Jim Campbell está  estudiando el
+valor de posesión por acción para esta compañía y le gustaría pronosticar  esta variable para 1993.
+
+La gráfica de la serie de tiempo para estos datos es la que se muestra en la figura 32, en ella se puede
+apreciar como van en aumento los valores de posesión.
+
+```{r graficaJim,fig.cap="Valor de posesión por acción",echo=FALSE}
+#FIgura 32
+datos <- read_excel("Ejercicio12.xlsx")
+datos<-ts(datos,start=1985,frequency = 4)
+plot(datos)
+```
+
+
+Se muestra a continuación el procedimiento para el cálculo con un método no formal.
+
+```{r jimNoFormalm,echo=TRUE}
+y<-datos
+y<-c(16.68,y)
+y[length(y)]
+```
+
+Se muestra el procedimiento para el cálculo por promedio móvil  con un periodo de 4 trimestres.
+
+```{r jimPromedioMov5,echo=TRUE}
+  mean_val<-rollmean(datos,5,align = "right")
+  mean_val[length(mean_val)]
+```
+
+
+Ahora se muestra el pronóstico con suavizado exponencial con un $\alpha=0.5$
+
+```{r suavExpJimEj12,echo=TRUE}
+prono<-suavizadoExpSimp(datos,0.5,mean(datos[1:(length(datos)/2)]))
+prono[length(prono)]
+```
+
+Con estos valores procedemos a calcular sus errores cuadrados medios
+```{r emcJImEj12,echo=TRUE}
+n=length(datos)
+print("Error de método no formal")
+mse(datos,y[1:n])
+print("Error de método de promedios moviles con periodo igual a 5")
+mse(datos[6:n],mean_val[1:(length(mean_val)-1)])
+print("Error de método de suavización exponencial")
+mse(datos,prono[1:n])
+```
+
+Con estos errores y aunado al hecho de que el valor real del primer trimestre de 1993 es $25.87$ la decisión
+en principio esta entre el método no formal y el suavizado exponencial pues son los que tienen el menor EMC y
+los tres se alejan más o menos lo mismo del valor real en el pronóstico, aunque el método de suavizado exponencial
+se aleja ligeramente menos. Por lo que le recomendamos a Jim usar el método de suavizado exponencial para realizar estos pronósticos.
+
+
+## Ejercicio 13
+
+Southdown, Inc., el tercer productor de cemento a nivel nacional, está impulsando un programa de quema de combustible de desperdicio. El costo total para Southdown se estima en 37 millones de dolares. Por esta razón, es en extremo importante para la compañía tener un pronóstico preciso de utilidades para el segundo trimestre de 1993. Los datos son:
+
+
+```{r setupUtilidades, fig.cap="Gráfica de la serie Southdown, Inc.", echo=FALSE}
+database1 <- read_excel("Ejercicio 8.3-13.xlsx")
+utilidades<- ts(database1$`Utilidades`,start=1986,frequency=4)
+#figura 33
+plot(utilidades)
+```
+
+
+
+En la Figura 33 se visualiza la gráfica de la serie, en la cual podemos observar una tendencia decreciente después de 1988.
+
+a) Utilice la atenuación exponencial con una constante de atenuación de 0.4 y un valor inicial de 77.4 para pronosticar los ingresos por acción para el segundo trimestre de 1993.
+
+```{r suavizadoutilidades,echo=TRUE}
+
+alpha<-0.4
+ini1<- 77.4
+suavizadoExpSimp<-function(utilidades,alpha,ini1){ # ini es el valor inicial
+  n=length(utilidades)
+  lambda<-c()
+  lambda[1]<-ini1
+  for (i in 1:n){
+    lambda[i+1]<-(utilidades[i]*alpha)+((1-alpha) * lambda[i])
+  }
+  lambda
+}
+lambda<-suavizadoExpSimp(utilidades,alpha,ini)
+pronostico1<-lambda
+error<- utilidades[1:29]-pronostico1[1:29]
+
+SE<-error^2
+SSE<-sum(SE)
+print(paste0("La suma de cuadrados del error es: ",SSE))
+
+print(paste0("El valor del pronótico correspondiente al ingreso del segundo trimestre de 1993 es: ",lambda[30]))
+```
+```{r graficautilidades1, fig.cap="Suavizado exponencial con una costante de atenuaón .4",echo=FALSE}
+#Figura 34
+plot(utilidades)
+par(new=T)
+plot(pronostico1,axes=FALSE,xlab="",ylab="",col="blue")
+```
+
+
+Podemos observar que la suma de cuadrados del error es 19961.47. Además de observar en la gráfica de la figura 34 que los valores pronosticados después de 1988 se encuentran muy lejos de los valores reales. 
+
+b) Utilice la atenuación exponencial con una constante de atenuación de 0.6 y un valor inicial de 77.4 para pronosticar los ingresos por acción para el segundo trimestre de 1993.
+
+
+```{r suavizadoutilidades25,echo=TRUE}
+
+alpha<-0.6
+ini<- 77.4
+suavizadoExpSimp1<-function(utilidades,alpha,ini){ # ini es el valor inicial
+  n=length(utilidades)
+  lambda<-c()
+  lambda[1]<-ini
+  for (i in 1:n){
+    lambda[i+1]<-(utilidades[i]*alpha)+((1-alpha) * lambda[i])
+  }
+  lambda
+}
+lambda<-suavizadoExpSimp1(utilidades,alpha,ini)
+pronostico<-lambda
+
+error<- utilidades[1:29]-pronostico[1:29]
+
+SE<-error^2
+SSE<-sum(SE)
+print(paste0("La suma de cuadrados del error es: ",SSE))
+
+print(paste0("El valor del pronótico correspondiente al ingreso del segundo trimestre de 1993 es: ",lambda[30]))
+```
+```{r graficautilidades3, fig.cap="Suavizado exponecial con una costante de atenuaón .6",echo=FALSE}
+#Figura 35
+plot(utilidades)
+par(new=T)
+plot(pronostico,axes=FALSE,xlab="",ylab="",col="blue")
+```
+
+
+Tomando una constante de atenuación de 0.6 podemos observar que los errores obtenidos de los pronósticos realizados no son muy  elevados, a diferencia de los que se calcularon en el inciso a), lo que podemos confirmar en la gráfica de la figura 35, que los valores pronosticados se encuentran mas cercanos de los valores reales.
+
+
+c) Estime la constante de atenuación que dará el mejor pronóstico.
+
+```{r calculoalpha,echo=TRUE}
+
+mejor_alpha<-function(utilidades){
+  alpha=0
+  al=alpha
+  mini=1000000000
+  while(alpha<=1){
+    inc=0.001
+    y<-suavizadoExpSimp1(utilidades,alpha,ini)
+    SSE<-sse(utilidades,y[1:29])
+    if(SSE<mini)
+    {
+      mini=SSE
+      
+      al=alpha
+
+    }
+    alpha=alpha+inc
+  }
+  al
+}
+
+mejor<-mejor_alpha(utilidades)
+
+print(paste0("Se encontro que el alpha que minimiza la suma de cuadrados del error es:  ",mejor))
+```
+
+Procedemos a calcular el pronóstico correspondiente con una constante de atenuación de 0.534
+
+```{r suavizadoutilidades2,echo=TRUE}
+
+alpha<-0.534
+ini<- 77.4
+suavizadoExpSimp2<-function(utilidades,alpha,ini){ # ini es el valor inicial
+  n=length(utilidades)
+  lambda<-c()
+  lambda[1]<-ini
+  for (i in 1:n){
+    lambda[i+1]<-(utilidades[i]*alpha)+((1-alpha) * lambda[i])
+  }
+  lambda
+}
+lambda<-suavizadoExpSimp2(utilidades,alpha,ini)
+pronostico2<-lambda
+error<- utilidades[1:29]-pronostico2[1:29]
+
+print(paste0("El valor del pronótico correspondiente al ingreso del segundo trimestre de 1993 es: ",lambda[30]))
+```
+```{r graficautilidades2, fig.cap="Suavizado exponencialcon una costante de atenuaón .534",echo=FALSE}
+#Figura 36
+plot(utilidades)
+par(new=T)
+plot(pronostico2,axes=FALSE,xlab="",ylab="",col="blue")
+```
+
+Como podemos observar la suma de cuadrados de error reduce a 19530.71 a comparación de los incisos a) y b). Además observamos que los errores de los pronósticos realizados en cada inciso existen tanto datos cercanos y lejanos a los valores reales, lo que podemos confirmar en la gráfica de la figura 36, además de observar que  no existe una diferencia muy visible entre los datos pronosticados con una constante de atenuación 0.534 y el inciso b. Comparando nuestro resultado con el de Value Line encontramos una diferencia grande entre ambos pronósticos. 
+
+
+
+## Ejercicio 14
+
+La gráfica de las ventas por acción de Triton Energy Corporation se presentan en la figura 37, que muestra
+una tendencia lineal, por lo que el método de Brown o Holt serán de mucha utilidad.
+
+```{r tritonGraf,fig.cap="Ventas por acción",echo=FALSE}
+# Figura 37
+datos <- read_excel("Ejercicio14.xlsx")
+datos<-ts(datos,start=1974,frequency = 1)
+plot(datos)
+```
+
+A continuación mostramos el método de Brown
+
+```{r tritonBrown1,echo=TRUE}
+alpha=0.179 # Alpha se eligio con mejor_alpha
+
+Brown_met<-function(alpha,p,datos,ini){
+  n=length(datos)
+  lambda<-c()
+  lambda[1]=ini
+  for (i in 1:n){
+  lambda[i+1]=( alpha*datos[i] )+ ( (1-alpha)*lambda[i] )
+  }
+  A=lambda[1:n]
+  A_p<-c()
+  A_p[1]=mean(A[1:(n/2)])
+
+  for (i in 1:n){
+    A_p[i+1]=( alpha*A[i] )+ ( (1-alpha)*A_p[i] )
+  }
+
+  a=2*A-A_p[1:n]
+  b=( alpha*(A-A_p[1:n]) )/( 1-alpha )
+
+  y<-a+b*p
+ y<-c(ini,y)
+  y
+}
+
+ini<-mean(datos[1:(length(datos)/2)])
+d<-Brown_met(0.179,1,datos,ini)
+d
+```
+
+
+Ahora mostramos el procedimiento con la tecnica de Holt.
+
+```{r Holttriton,echo=TRUE}
+
+p1<-Holt(datos, alpha = 0.3, beta = 0.1, lead = 1, plot = FALSE)
+p1$estimate
+print("Predicción:")
+p1$pred
+```
+
+
+Después de ver ambos pronósticos y a pesar de que ambos se ven lejos de los valores reales, el método de Holt
+parece acercarse más al hecho por Value line, por lo que consideramos que es el mejor, además que es el que se ve menos mal en todas sus estimaciones.
+
+
+
+
+## Ejercicio 15
+
+En la figura 38 vemos las utilidades por trimestre de la Consolidated Edison Company desde 1985, en la que
+podemos identificar que es cíclica en cada par de trimestres y tendencia lineal después de la mitad
+de la serie, por lo que proponemos el modelo de medias móviles dobles de 2 para intentar absorber la ciclicidad
+y el de Holt puesto que presenta cierta tendencia, mediremos ambos para ver cuál se comporta mejor.
+
+```{r tritonGrafTYGH,fig.cap="Utilidades",echo=FALSE}
+# Figura 38
+datos <- read_excel("Ejercicio15.xlsx")
+datos<-ts(datos,start=1985,frequency = 4)
+plot(datos)
+```
+
+Se presenta primero el cálculo del promedio móvil doble.
+
+```{r promDobEje15,echo=TRUE}
+promMovDob<-function(datos,periodo,p)
+{
+  n=length(datos)
+  m = c()
+  m_p = c()
+  # Cálculo del promedio móvil
+  for(i in (periodo):n){
+    m[i] = (sum(datos[(i-periodo+1):(i)]) )/periodo
+  }
+  
+  # Cálculo del promedio móvil doble
+  for(i in (periodo+1):(n)){
+    m_p[i] = (sum(m[(i-periodo+1):(i)]))/periodo
+  }
+
+  #Cálculo de parametros
+  a = 2*m - m_p
+
+  b = (m - m_p)
+
+  #Cálculo de pronóstico
+  y = (a + b*p)
+  y=insert(y,1,values=NA)
+
+  # Cálculo de error
+  e<-c()
+  for(i in (periodo):n){
+    if( is.na(y[i]) != TRUE){
+      
+      e[i] = datos[i]-y[i]  
+    }
+    else{
+      ini=i
+    }
+  }
+  ini=ini+1
+  
+  errorMedio=mse(datos[ini:n],y[ini:n])
+  
+  d=insert(datos[1:n],n+1,values=NA)
+  m=insert(m,n+1,values=NA)
+  m_p=insert(m_p,n+1,values=NA)
+  a=insert(a,n+1,values=NA)
+  b=insert(b,n+1,values=NA)
+  e=insert(e[1:n],n+1,values=NA)
+
+  movil<-data.frame(d,m,m_p,a,b,y,e)
+  colnames(movil)<-c("Observaciones","M","M'","a","b","Pronóstico","Error")
+  movil
+}
+
+mmd<-promMovDob(datos,2,1)
+mmd$Pronóstico
+```
+
+A continuación se muestra el método de Holt
+
+```{r HoltEdisonEj15,echo=TRUE}
+p1<-Holt(datos, alpha = 0.3, beta = 0.1, lead = 1, plot = FALSE)
+p1$estimate
+print("Predicción:")
+p1$pred
+```
+
+
+Notamos que ambas predicciones se encuentran lejos entre si, procedemos a ver sus errores medios cuadrados:
+```{r mseEj15Pred,echo=TRUE}
+print("Error método de Holt")
+mse(datos,p1$estimate)
+print("Error método de Promedios Móviles dobles")
+mse(datos[4:32],mmd$Pronóstico[4:32])
+```
+
+
+Notamos así que el error cuadrado medio de promedios móviles dobles supera bastante al de Holt por lo que nos
+decantamos por el método de Holt para calcular el mejor pronóstico.
+
+\pagebreak
+
+## Inciso 2
+
+Aplique los diferentes métodos de promedios móviles y suavizado, vistos en el
+capítulo, al caso del índice general de comercio al por menor en México. Analice el
+desempeño de cada método de acuerdo con sus condiciones de aplicación
+(incluyendo los resultados obtenidos al finalizar la sección 8.1), compare los
+resultados de todos los métodos y discuta sus conclusiones.
+
+```{r actividad3I2Datos,echo=FALSE}
+database <- read_excel("Actividad 8.1.xlsx")
+y <- ts(database$`Dato`,start=2008,frequency=12) 
+```
+
+Aplicaremos en principio el método de los promedios móviles con periodo
+de 5 meses a la serie junto a su ECM y mostramos como se aproxima su gráfica a a la real en la figura 39.
+
+
+```{r promMovInci2,echo=TRUE}
+mean_val<-rollmean(y[1:length(y)],5,align = "right")
+mse(y[5:length(y)],mean_val[1:length(mean_val)])
+```
+
+
+```{r grafMeanMovInci2A,fig.cap="Medias móviles",echo=FALSE}
+plot(y)
+par(new=T)
+plot(mean_val,axes = FALSE,col='blue',xlab="",ylab="")
+# Figura 39
+```
+
+Ahora mostramos el procedimiento con promedios móviles dobles también con 5 meses
+junto a su EMC y su gráfica en la figura 40.
+
+```{r promDobInci2Acti3,echo=TRUE}
+mmd<-promMovDob(y,5,1)
+y_p<-mmd$Pronóstico
+mse(y[10:length(y)],y_p[10:length(y)])
+```
+
+
+```{r promDobInci2Acti3graf,fig.cap="Promedios móviles dobles",echo=FALSE}
+# Fig 40
+plot(y)
+par(new=T)
+d<-y_p[10:length(y_p)]
+d<-as.numeric(d)
+plot(d,axes=FALSE,xlab="",ylab="",col="blue")
+
+```
+
+
+Ahora mostramos el procedimiento de suavizado exponencial con un alpha de 0.1
+junto a su EMC y su gráfica en la figura 41.
+
+```{r SuavExpoInci2Acti3,echo=TRUE}
+suavizadoExpSimp<-function(datos,alpha,ini){
+  n=length(datos)
+  lambda<-c()
+  lambda[1]<-ini # lambda[1]=lambda0,  en general lambda[i]=lambdai-1
+for (i in 1:n){
+  lambda[i+1]<-(datos[i]*alpha)+((1-alpha) * lambda[i])
+}
+lambda  # Para fines practicos lambda[i] es la estimación de y[i]
+}
+
+prono<-suavizadoExpSimp(y,0.1,mean(y[1:(length(y)/2)]))
+
+mse(y[1:length(y)],prono[1:length(y)])
+```
+
+
+```{r SuavExpoInci2Acti3graf,fig.cap="Suavizado exponencial",echo=FALSE}
+# Fig 41
+plot(y)
+par(new=T)
+plot(prono,axes=FALSE,xlab="",ylab="",col="blue")
+```
+
+Ahora mostramos el procedimiento de suavizado exponencial doble(método de Brown) con un alpha de 0.1 junto a su EMC y su gráfica en la figura 42.
+
+```{r BrownInci2Acti3,echo=TRUE}
+ini<-mean(y[1:(length(y)/2)])
+d<-Brown_met(0.1,1,y,ini)
+mse(y[1:length(y)],d[1:length(y)])
+```
+
+
+```{r BrownInci2Acti3graf,fig.cap="Suavizado exponencial doble",echo=FALSE}
+# Fig 42
+plot(y)
+par(new=T)
+plot(d,axes=FALSE,xlab="",ylab="",col="blue")
+```
+
+Si nos dejamos guiar por las gráficas vemos que el método de promedios dobles es 
+el que peor se desempeña y que ambos métodos de suavizado capturan la tendencia lineal de forma aceptable pero que no muestran una muy buena aproximación, al 
+menos no tan buena como la aproximación que da el método de promedios dobles, que
+aproxima muy bien la gráfica. Los errores cuadrados medios de cada método también
+hacen mucho sentido a lo observado en las gráficas, dando como vencedor al
+de promedios móviles con un error muy pequeño. Comparado con la proyección lineal
+hecha en la actividad 8.1 la mejora es notable, pues si bien ambos métodos
+(promedios móviles y proyección lineal) capturan la tendencia de la serie la
+ganancia se da en que el primero captura más la variabilidad de los datos y nos
+puede ofrecer mejores pronósticos, a nuestra consideración, lo suficientemente
+mejores como para optar por este método a pesar de ser más tardado.
+
+\pagebreak
+\pagebreak
+
+## Inciso 3
+
+En el Banco de Información Económica (INEGI, 2015a) ingrese a Series que ya
+no se actualizan, sector alimentario, producción, producción agrícola, avance de
+cosecha, primavera-verano (de septiembre a marzo del año siguiente), jitomate
+rojo, producción obtenida y descargue la serie de producción obtenida. Ajuste su
+tendencia con el método adecuado y pronostique algunos periodos. Discuta sus
+resultados con el grupo.
+
+En la figura 43 se presenta la gráfica de la figura y se pude apreciar una
+tendencia lineal por lo que el método de Brown es perfecto para realizar
+pronósticos.
+
+```{r SerieproductoB,fig.cap="Serie Producto Interno Bruto",echo=FALSE}
+database <- read_excel("Producto Interno Bruto, a precios de mercado.xlsx")
+internob<- ts(database$`Dato`,start=1980,frequency=4) 
+plot(internob)
+```
+
+Seguimos las instrucciones de la guía de clase  que nos dice que si queremos
+el pronóstico a $p$ periodos usamos $\hat{y}_{t+p}=a_{t}+b_{t}p$, en este
+caso para replicar la formula lo que hacemos es que corremos la función
+**Brown_met** con los distintos valores de $p$ y luego tomar el último valor
+que arroja la lista pues ese será el correspondiente a $y_{t+p}$.
+
+```{r metBrownAct3Inc3,echo=TRUE}
+ini<-mean(y[1:(length(y)/2)])
+d<-Brown_met(0.1,1,y,ini)
+t1<-d[length(d)]
+
+d<-Brown_met(0.1,2,y,ini)
+t2<-d[length(d)]
+
+d<-Brown_met(0.1,3,y,ini)
+t3<-d[length(d)]
+
+d<-Brown_met(0.1,4,y,ini)
+t4<-d[length(d)]
+
+d<-Brown_met(0.1,5,y,ini)
+t5<-d[length(d)]
+
+print("Pronósticos")
+print(paste0("Un periodo al futuro ",t1))
+print(paste0("Dos periodo al futuro ",t2))
+print(paste0("Tres periodo al futuro ",t3))
+print(paste0("Cuatro periodo al futuro ",t4))
+print(paste0("Cinco periodo al futuro ",t5))
+
+```
+
+Notamos que las predicciones a futuro no varían mucho después de la primera,
+si tomamos en cuenta este modelo diríamos que el PIB se mantendrá en un valor estable por los siguientes 5 trimestres, es decir, más de un año. Aunque se nota que irá a la baja levemente, esto posiblemente es debido a los datos
+atípicos del 2020 que causan que el modelo se sesgue negativamente. Una posible forma de hacer más robusto este modelo simple sería tratar los datos
+atípicos, pero eso ya puede ser demasiado tratamiento dado que se busca la inmediatez con este método.
+
+\pagebreak
+\pagebreak
+
+# Bibliografía

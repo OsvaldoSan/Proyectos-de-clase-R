@@ -1,0 +1,156 @@
+---
+title: "Hicks"
+author: "Osvaldo"
+date: "23/4/2020"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(lmtest)
+library(alr3)
+library(apaTables)
+library(GGally)#Graficos de dispercion multiples
+library(corrplot)#graficas de correlacion
+library(car)#vif
+require(car)
+```
+
+```{r datos,echo=FALSE}
+#Ejercicio 5.2------------------------------------------------------------
+##Factores
+##Renglon
+strip<-c("I","II","III","IV","V","I","II","III","IV","V","I","II","III","IV","V","I","II","III","IV","V","I","II","III","IV","V")
+##Columna
+posicion<-c("1","1","1","1","1","2","2","2","2","2","3","3","3","3","3","4","4","4","4","4","5","5","5","5","5")
+#Letras Latinas
+electrodos<-c("A","E","D","C","B","B","A","E","D","C","C","B","A","E","D","D","C","B","A","E","E","D","C","B","A")
+#Observaciones
+time<-c(3.5,2.6,2.9,2.5,2.1,2.1,3.3,2.6,2.9,2.3,2.5,2.1,3.5,3.0,3.7,3.5,2.5,2.7,3.3,3.2,2.4,2.7,2.9,2.3,3.5)
+
+# convertir a tipos factor
+strip<-factor(strip)
+posicion<-factor(posicion)
+
+datos<-data.frame(strip=strip,posicion=posicion,electrodos
+                  =electrodos,time=time)
+#youden--------
+posicion_y<-c("1","1","1","1","1","2","2","2","2","2","3","3","3","3","3","4","4","4","4","4")
+##Renglon
+strip_y<-c("I","II","III","IV","V","I","II","III","IV","V","I","II","III","IV","V","I","II","III","IV","V")
+#Letras Latinas
+electrodos_y<-c("A","E","D","C","B","B","A","E","D","C","C","B","A","E","D","D","C","B","A","E")
+#Observaciones
+time_y<-c(3.5,2.6,2.9,2.5,2.1,2.1,3.3,2.6,2.9,2.3,2.5,2.1,3.5,3.0,3.7,3.5,2.5,2.7,3.3,3.2)
+posicion_y<-factor(posicion_y)
+
+datos_y<-data.frame(strip_y=strip_y,posicion_y=posicion_y,electrodos_y
+                   =electrodos_y,time_y=time_y)
+
+```
+
+
+
+# Ejercicio 5.2
+
+Ejecutamos un ANOVA de tres vías para analizar los efectos de los electrodos, las tiras(strips) y posiciones en el tiempo para cortar el material.
+
+```{r anova1,echo=FALSE}
+anova_cl<-aov(time~electrodos+strip+posicion,datos)
+summary(anova_cl)
+```
+
+Antes de hacer el análisis haremos la comprobación de supuestos para la prueba
+```{r shapiro,echo=FALSE}
+plot(anova_cl)
+```
+
+En el primer y segundo gráfico vemos que no muestra falta de homocedasticidad ni de normalidad,ademas de que la independencia la podemos suponer dada la aleatorización de los datos en el cuadrado latino.
+Para formalizar un poco mas el asunto utilizaremos el shapiro.test para comprobar que los residuos se distribuyen de forma norma, el bptest para comprobar la homocedasticidad en los residuos, y el chiq.test para comprobar independencia en las observaciones.
+
+```{r compro,echo=FALSE}
+shapiro.test(anova_cl$residuals)
+```
+
+El test de normalidad nos dice que no podemos rechazar la hipótesis nula por lo tanto asumimos normalidad.
+
+```{r comphomo,echo=FALSE}
+bptest(anova_cl)
+```
+
+El test de homocedasticidad tampoco indica falta de homocedasticidad en los residuos del análisis de varianza.
+
+Y el test chi cuadrado nos muestra lo siguiente
+```{r chiq,echo=FALSE}
+chisq.test(datos$time)
+```
+
+Con ese p-value evidentemente mayor a 0.05 estamos seguros de que hay independencia ya que no podemos rechazar H0.
+#### Análisis del ANOVA
+
+Muestra que hay efectos de los tratamientos(electrodos) en el tiempo de corte del metal dado que el p-value es menor a 0.05 y por lo tanto podemos rechazar la hipótesis nula de igualdad de medias, y ahora nos disponemos a ejecutar contrastes Post Hoc para comparar cuales medias son las que causan problemas.
+
+Para ello usaremos la prueba de _TuckeyHSD_ ya que es ideal para comparar grupos de datos que estén equilibrados, es decir que tengan la misma cantidad de muestras
+```{r post,echo=FALSE}
+TukeyHSD(anova_cl)
+```
+
+Como nos muestra la prueba hay diferencias significativas entre las medias de B-A,C-A, y D-B dado el _p-values_ asociado a estas diferencias de medias es menor a 0.05. Esto nos hace pensar que son los electrodos A, B y D los que tienen un mayor efecto en la diferencia de medias generales, por lo que podemos considerar a estos 3 como electrodos como los que causan diferencias significativas al momento de cortar el metal.
+
+# 5.3 Cuales electrodos son los mejores si se busca el menor tiempo
+
+Para esto haremos un poco de estadística descriptiva y con un diagrama de cajas buscaremos los electrodos que causan un menor tiempo.
+```{r boxi,echo=FALSE}
+ggplot(data=datos,aes(x=electrodos,y=time,color=electrodos))+
+  geom_boxplot() +
+  theme_bw()+
+  labs(y="Tiempo")
+```
+
+El diagrama nos muestra que B es el que tiene asociado el menor tiempo en general, a pesar de que hay un dato atípico, pero este esta a la altura del electrodo E, mientras que el C también tiene un dato atípico que también esta a la altura del E aunque un poco mas arriba y otro mas abajo a la altura de B, pero en su mayoría se agrupan en el tiempo 2.5 . Así que considerando esto parece mas apropiado usar solo los electrodos B y C si se quiere conseguir un menor tiempo dado que A esta muy arriba, y D y E abarcan un amplio espectro en el tiempo por lo que pueden tardarse mas de 3 horas o incluso menos de 2.5 horas .
+
+
+
+
+# Ejercicio 5.5
+
+Ahora que no tenemos la ultima columna nos vemos en la necesidad de trabajar con un cuadro latino incompleto y para hacerlo usamos el análisis de youden que nos da la posibilidad de hacerlo. Ejecutamos el ANOVA directamente en R, pero igual lo hacemos en LibreOffice calc para verificar que la función _aov_ trabaje con bloques balanceados incompletos.
+
+```{r aovnes,echo=FALSE}
+anova_y<-aov(time_y~electrodos_y+strip_y+posicion_y,datos_y)
+summary(anova_y)
+```
+
+El procedimiento en _calc_ fue seguido de acuerdo a el capitulo 9 del curso de estadística de la universidad de granada.
+
+Ya que nos salio lo mismo, al parecer la función _aov_ si trabaja con bloques incompletos, al menos para este caso particular por lo que podemos seguir con el análisis; Aunque primero haremos la comprobación de supuestos, para lo cual asumimos independencia de la misma manera que en el punto 5.2 e iremos directamente a los test para probar normalidad ,homocedasticidad e independencia.
+
+```{r shapi,echo=FALSE}
+shapiro.test(anova_y$residuals)
+```
+
+Como era de esperarse por ejercicios anteriores el test de normalidad no nos permite rechazar la hipótesis de normalidad.
+
+```{r homoi,echo=FALSE}
+bptest(anova_y)
+```
+
+El test de homocedasticidad de igual manera nos impide rechazar la hipótesis de homocedasticidad por que el p-value es mayor a 0.05.
+
+```{r chisqr,echo=FALSE}
+chisq.test(datos_y$time_y)
+```
+
+El test nos devuelve un p-value mayor a 0.05 y por lo tanto no podemos rechazar H0 como esperabamos.
+
+Ahora si podemos continuar con el análisis; En vista de que los tratamientos presentan diferencias significativas según el ANOVA proseguimos a ejecutar los contrastes Post Hoc para encontrar cuales medias difieren.Usamos el ajuste de Holm para el test de Bonferroni por su facilidad de uso en este problema, y ya que ni strip ni posición presentan diferencias significativas en sus medias podemos proseguir comparando las medias por tratamientos.
+
+```{r posi,echo=FALSE}
+pairwise.t.test(x = datos_y$time_y, g = datos_y$electrodos_y, p.adjust.method = "holm"
+                ,pool.sd = TRUE, paired = FALSE, alternative = "two.sided")
+```
+
+Nos muestra que B-A,C-A,D-B,D-C y E-C tienen diferencias significativas, pues su p-value es inferior a 0.05, lo cual llama mucho la atención ya que con la columna extra eran menos las medias que diferían pero para este modelo han aumentado, aunque A,B y D siguen siendo las que mas difieren.

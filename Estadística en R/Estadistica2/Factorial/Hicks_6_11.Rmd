@@ -1,0 +1,167 @@
+---
+title: "Hicks 6"
+author: "Osvaldo"
+date: "29/4/2020"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(lmtest)
+library(alr3)
+library(apaTables)
+library(GGally)#Graficos de dispercion multiples
+library(corrplot)#graficas de correlacion
+library(car)#vif
+require(car)
+
+```
+
+```{r datosgero,echo=FALSE}
+factorial<- read_excel("Factorial1.xlsx")
+attach(factorial)
+
+factorial$Laboratorio<-factor(factorial$Laboratorio)
+factorial$Temperatura<-factorial$Temperatura
+factorial$Mix<-factor(factorial$Mix)
+
+Observaciones<-factorial$Observaciones
+Laboratorio<-factor(factorial$Laboratorio)
+Temperatura<-factor(factorial$Temperatura)
+Mix<-factor(factorial$Mix)
+
+obs<-log10(Observaciones)
+```
+# Ejercicio 6.11
+
+En este problema tenemos 3 factores, el laboratorio, la mezcla y la temperatura que tentativamente afectan a la tasa de deformación de materiales de goma, cada uno con sus respectivos niveles, se harán dos replicas por cada caso con lo que nos generara una buena cantidad de datos a la que le aplicamos un ANOVA con un diseño factorial de 3 factores que da el siguiente resultado:
+```{r datos1,echo=FALSE}
+
+mod3<-aov(Observaciones~Laboratorio+Temperatura+Mix+Laboratorio*Temperatura+
+            Laboratorio*Mix+Temperatura*Mix+Laboratorio*Temperatura*Mix)
+summary(mod3)
+```
+
+Antes de pasar al análisis de la tabla del anova haremos la comprobación de supuestos.
+
+### Comprobación de supuestos
+
+Para la prueba de independencia usaremos el _chi-squared-test_ que nos muestra el siguiente resultado:
+```{r chisq,echo=FALSE}
+  chisq.test(Observaciones)
+```
+El cual nos regresa un p-values mayor a 0.05 por lo que no podemos rechazar la hipótesis inicial de que hay independencia en las observaciones.
+
+Para la homocedasticidad usaremos el _bptest_ que nos devuelve lo siguiente.
+```{r datoshomoff,echo=FALSE}
+  bptest(mod3)
+```
+
+Que nos devuelve un p.value cercano a 0 por lo que es muy claro que rechazamos la hipótesis inicial de falta de homocedasticidad.
+
+Para la normalidad veamos el gráfico de los cuantiles normales teóricos y los que tenemos por las observaciones:
+
+```{r nomi,echo=FALSE}
+  qqnorm(mod3$residuals)
+  qqline(mod3$residuals)
+```
+ El cual muestra una muy aparente falta de normalidad que corroboraremos con el _shapiro-test_ que nos muestra lo siguiente:
+```{r nomalita,echo=FALSE}
+  shapiro.test(mod3$residuals)
+```
+
+El cual nos muestra un p-value mayor a 0.05 con lo que no se puede rechazar la hipótesis de normalidad en los datos.
+
+Dada la situación de falta de homocedasticidad hemos recurrido a hacer una transformación en la variable respuesta usando el logaritmo base 10 para solucionar estos problemas.
+
+Para probar la homocedasticidad de varianzas hemos optado por el test de _Bartlet_ ya que es mas aconsejable cuando se hacen este tipo de transformaciones en los datos y permite contrastar aunque sean grupos de tamaños diferentes.
+```{r homocedl,echo=FALSE}
+#aqui se realiza el anova
+m0<-lm(obs~(Laboratorio+Temperatura+Mix)^3)
+am0<-aov(m0)
+bartlett.test(obs~Temperatura)
+bartlett.test(obs~Laboratorio)
+bartlett.test(obs~Mix)
+```
+
+Que ahora si cumplen todos con el supuesto de homocedasticidad ya que en cada una de las comparaciones el p-value es mayor a 0.05 con lo que no se puede rechazar la hipótesis nula de homogeneidad de varianzas; ahora veremos abajo como también cumplen con la normalidad e independencia.
+
+```{r shapind,echo=FALSE}
+  shapiro.test(am0$residuals)
+  chisq.test(obs)
+```
+
+Aunque nos lanza una advertencia la prueba _chi-squared_ podemos confiar en la independencia ya que los datos originales eran independientes y una transformación del tipo logaritmo debe mantener la independencia, por su parte el _shapiro-test_ da un p-value mayor a 0.05 por lo que no podemos rechazar la hipótesis nula de falta de normalidad.
+
+Ahora mostramos la nueva tabla anova resultado de dicha transformación que no difiere mucho de la original.
+
+```{r anovanew,echo=FALSE}
+summary(am0)
+```
+
+### Análisis de los datos
+Lo que nos muestra el ANOVA es que hay interacciones importantes entre todos los datos lo cual llama mucho la atención, por que ademas parece que hay diferencias significativas en todas las medias, pero para tener una vista mas general de esto veremos unos diagramas de interacción abajo
+
+
+```{r ggplot1,echo=FALSE}
+ggplot(data = factorial, aes(x = Temperatura, y = Observaciones, colour = Laboratorio,
+                         group = Laboratorio)) +
+  stat_summary(fun = mean, geom = "point") +
+  stat_summary(fun = mean, geom = "line") +
+  labs(y  =  'mean (Observaciones)') +
+  theme_bw()
+ggplot(data = factorial, aes(x = Temperatura, y = Observaciones, colour = Mix,
+                             group = Mix)) +
+  stat_summary(fun = mean, geom = "point") +
+  stat_summary(fun = mean, geom = "line") +
+  labs(y  =  'mean (Observaciones)') +
+  theme_bw()
+
+```
+
+En estos se ve como la temperatura afecta bastante a los otros factores si los comparamos de manera individual, ya que si tomamos las diferentes medias asociadas a cada laboratorio y dejamos fija la temperatura estas no cambian mucho, pero el cambio se ve muy marcado cuando cambian las temperaturas, lo mismo sucede con el gráfico que compara a Mix con las temperaturas que tiene una forma muy similar, así que todo esto indica que la temperatura afecta tanto a los demás factores que incluso causa que haya diferencias significativas en las medias de los otros factores.
+
+También sera interesante ver el gráfico de interacciones para que contrasta a laboratorio contra Mix
+```{r datos}
+ggplot(data = factorial, aes(x = Laboratorio, y = Observaciones, colour = Mix,
+                             group = Mix)) +
+  stat_summary(fun = mean, geom = "point") +
+  stat_summary(fun = mean, geom = "line") +
+  labs(y  =  'mean (Observaciones)') +
+  theme_bw()
+```
+
+
+Vemos que también hay interacciones importantes a resaltar en este pero no tan marcadas como en el anterior de las temperaturas.
+
+Queríamos mostrar estos gráficos antes de ir a las pruebas post hoc para no ir a ciegas a estas, ya que si bien el anova nos dice que todas las medias son significativamente diferentes en los distintos factores también creemos que esto es causado por la temperatura, por ello realizaremos las pruebas post hoc para comparar individualmente los factores.
+
+### Pruebas Post Hoc
+Ahora ya vimos de formas distintas que es claro el efecto de la temperatura sobre las observaciones pero no sabemos en especifico cuales medias difieren, que _a priori_ parece que las tres medias relacionadas a cada nivel de la temperatura difieren pero vamos a cerciorarnos de esto con el _Bonferroni-Holm-test_ que comparara las medias de este factor únicamente y sin contemplar a los demás ya que eso otros no resultaron ser significantes.
+
+```{r bondi,echo=FALSE}
+  pairwise.t.test(x = obs, g =Temperatura, p.adjust.method = "holm"
+                ,pool.sd = TRUE, paired = FALSE, alternative = "two.sided")
+```
+
+Lo cual nos muestra que hay diferencias entre las tres temperaturas de manera significativa por que el p-value es inferior a 0.05 que corrobora lo que ya habíamos visto con las gráficas de interacción, esa gran diferencia entre las tres.
+
+
+Ahora veremos la comparación para los laboratorios:
+```{r labopost,echo=FALSE}
+pairwise.t.test(x = obs, g =Laboratorio, p.adjust.method = "holm"
+                ,pool.sd = TRUE, paired = FALSE, alternative = "two.sided")
+
+```
+
+
+Que sorprendente mente nos muestra que no hay diferencias en las medias de los diferentes laboratorios con un p-value igual a 1 que nos asegura que no existen diferencias.
+
+```{r mixpost,echo=FALSE}
+pairwise.t.test(x = obs, g =Mix, p.adjust.method = "holm"
+                ,pool.sd = TRUE, paired = FALSE, alternative = "two.sided")
+```
+Este nos muestra igual con un p-values igual a 1 que no hay diferencias en las medias de estos grupos.
+
+Después de hacer todo esto es bastante curioso pensar en como el anova nos mostró que todos los factores tenían medias significativamente diferentes(incluso antes de transformar los datos) pero la estadística descriptiva y las pruebas post hoc nos mostraron otra cosa, lo que nos lleva a pensar que como lo planteamos un poco mas arriba, la interacción de la temperatura con estos factores es tan alta y las medias de las diferentes temperaturas difieren tanto que causaron que el anova saliera con tantas diferencias de todos los factores aunque en realidad solo estaban causadas por la temperatura.

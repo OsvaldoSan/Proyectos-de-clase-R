@@ -1,0 +1,544 @@
+---
+title: "Estadística descriptiva"
+author: "Osvaldo Santos"
+date: "2/8/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(e1071)# Para calcular momentos
+library(psych) # para curtosis y sesgo
+```
+
+# Clasificación de variables
+
+# Representaciones gráficas y númericas de una muestra
+
+Consideremos a la muestra de una población de jovenes estudiantes con distribución uniforme. De esta
+podemos obtener distintos estadísticos que nos digan algo sobre la población general, por ejemplo
+el rango.
+
+```{r,echo=TRUE}
+edades<-round(runif(100,18,30))
+rango=max(edades)-min(edades)
+rango
+```
+
+Podemos también hacer tablas de contigencia, con el siguiente comando podemos crear una tabla que
+cuente la cantidad de ocurrencias de cada valor en el dataset.
+
+```{r,echo=TRUE}
+freq_1=table(edades)
+freq_1
+```
+
+Esta función se puede explotar mucho más.
+
+Ahora si queremos las frecuencias relativas tenemos:
+
+```{r,echo=TRUE}
+prop.table(table(edades))
+```
+
+Y si queremos que salgan en una tabla elegante usamos lo siguiente:
+
+```{r,echo=TRUE}
+frecuencia<-transform(table(edades),Rel_freq=prop.table(Freq),Acumulado=cumsum(Freq))
+frecuencia
+```
+
+Podemos también hacer representaciones gráficas de las frecuencias, como el *histograma*:
+
+```{r,echo=TRUE}
+hist(edades)
+```
+
+O también tenemos el *gráfico de barras*, muy parecido pero especial para datos cualitativos, aunque aquí
+se usa para datos continuos como muestra:
+
+```{r,echo=TRUE}
+barplot(freq_1)
+```
+
+Otra representación util es un *poligono de frecuencias* .
+
+```{r,echo=TRUE}
+plot(freq_1,type='p',ylab='Frecuencia',main='Poligono de frecuencias',col='purple')
+lines(freq_1,type = 'l',col='blue')
+```
+
+
+Ahora que si lo que queremos es un poligono de frecuencias acumuladas o más conocido como *Ojiva*, también
+lo podemos mostrar.
+
+```{r,echo=TRUE}
+lista_edades=as.numeric(levels(frecuencia$edades))
+frecAcum=frecuencia$Acumulado
+plot(lista_edades,frecAcum,type='p',ylab='Frecuencia',main='Ojiva',col='green')
+lines(lista_edades,frecAcum,type = 'l',col='red')
+```
+
+
+Una forma alternativa de representar los datos es en forma de *circulo* o sectores:
+
+```{r,echo=TRUE}
+pie(frec,labels = lista_edades,col = rainbow(6))
+```
+
+Otro gráfico que podría no parecer muy útil, pero de hecho lo es y mucho, es el gráfico de *disperción* o
+*Scatterplot*. Para mostrarlo usaremos el dataset de iris, por que una de sus tantas funciones es mostrar
+si hay correlación entre dos variables, con un gráficador más avanzado como ggplot2 incluso podríamos hacer que cada punto fuese de un color diferente y ver acumulación o clusterización[^1].
+
+[^1]:[Gráficos pie de muchas formas](https://r-coder.com/grafico-sectores-r/)
+
+```{r,echo=TRUE}
+datos=iris
+plot(datos$Sepal.Length, datos$Petal.Length,col='cyan')
+```
+
+
+```{r,echo=TRUE}
+ggplot(datos) +
+  aes(x = Sepal.Length, y = Petal.Length, colour = Species) +
+  geom_point() +
+  scale_color_hue()
+```
+
+No son los unicos gráficos ni tablas que podemos hacer, pero si son los básicos, al final veremos más y más
+librerias que hacen este proceso más sencillo[^2].
+
+[^2]:[](https://statsandr.com/blog/descriptive-statistics-in-r/#dotplot)
+
+# Datos agrupados
+
+Podemos replicar lo anterior para datos agrupados, los datos se agrupan por intervalos y cada intervalo
+tiene una marca de clase, con esto cada valor se sustituye por su marca de clase para formar una nueva muestra
+;podemos así hacer tablas de contingencia y gráficos. Para un primer
+ejemplo a mano consideremos la misma variable de edades.
+Una respuesta al por que necesitamos agrupar datos, la encontramos en el sitio [Rpubs datos agrupados](https://www.rpubs.com/JoanClaverol/488759) y la citamos a continuación.
+
+    En estadística, existen innumerables motivos por los cuales nos interesa agrupar los datos cuando estos       son cuantitativos. Uno de estos motivos puede ser perfectamente que los datos sean muy heterogéneos. En       este caso, nos encontraríamos con que las frecuencias de los valores individuales serían todas muy            similares, lo que daría lugar a un diagrama de barras muy difícil de interpretar...
+
+En esa página se encuentran los pasos para hacerlo de forma más automatica.
+
+¿Como agrupar datos?
+
+1- Decidir el número de intervalos que vamos a utilizar.
+
+Usamos la regla de Struges para calcular este valor, la regla la definimos como $i=1+3.22log(n)$.
+
+```{r,echo=TRUE}
+n=length(edades)
+intervalos=1+(3.22*log10(n))
+intervalos
+```
+
+
+2- Decidir la amplitud de estos intervalos
+
+Para esto usamos la formula $a=\dfrac{Rango}{i}$, donde $a$ es la amplitud.
+
+```{r,echo=TRUE}
+a=(max(edades)-min(edades))/intervalos
+a
+```
+
+
+3- Acumular los extremos de los intervalos
+
+Lo que queda es definir los limites de los intervalos donde entrarán los datos, el intervalo inferior
+se forma al tomar el valor más pequeño de la muestra  y restarle la mitad de la unidad de medida más baja,
+es decir, si nuestros datos son enteros la unidad más baja es el número 1. A este se le suma el valor de
+la amplitud y así formamos todos los intervalos, como vemos en la tabla de abajo.
+
+```{r,echo=TRUE}
+unidad=1
+int_inferior=min(edades)-((1/2)*unidad)
+p=data.frame(lim_inferior=int_inferior,lim_superior=int_inferior+a)
+li=int_inferior+a#Siguiente límite inferior
+while(li<max(edades)){
+  p=rbind(p,data.frame(lim_inferior=li,lim_superior=li+a))
+  li=li+a
+}
+```
+
+4- Calcular el valor representativo de cada intervalo, su marca de clase.
+
+Lo último que queda es calcula la marca de clase para cada intervalo, que usualmente es el valor
+medio de los limites que definimos como $Xc=\dfrac{Lic+Lsc}{2}$:
+
+```{r,echo=FALSE}
+Xc=((p[1,]$lim_inferior+p[1,]$lim_superior)/2)
+for (i in 2:nrow(p)) {
+  Xc=c(Xc,((p[i,]$lim_inferior+p[i,]$lim_superior)/2))
+  
+}
+p=cbind(p,Xc)
+```
+
+
+Ahora que ya tenemos podemos crear una función que haga todo de forma automatica y que también cree la dabla de contingencia con las frecuencias de clase.
+
+```{r,echo=TRUE}
+tabla_agrupados<-function(datos,unidad_minima){ # datos debe ser una lista unidimensional
+  n=length(datos)
+  intervalos=1+(3.22*log10(n))
+  
+  a=(max(datos)-min(datos))/intervalos
+  
+  
+  unidad=unidad_minima
+  int_inferior=min(datos)-((1/2)*unidad)
+  p=data.frame(lim_inferior=int_inferior,lim_superior=int_inferior+a)
+  li=int_inferior+a#Siguiente límite inferior
+  while(li<=max(datos)){# Colocamos este limite por que parece razonable
+    p=rbind(p,data.frame(lim_inferior=li,lim_superior=li+a))
+    li=li+a
+  }
+  
+  
+  Xc=((p[1,]$lim_inferior+p[1,]$lim_superior)/2)
+  for (i in 2:nrow(p)) {
+    Xc=c(Xc,((p[i,]$lim_inferior+p[i,]$lim_superior)/2))
+    
+  }
+  p=cbind(p,Xc)
+  
+  # Creación de frecuencia de clase
+  datos_s=sort(datos)
+  clase=1
+  frecuencia_c=integer(nrow(p))
+  p[clase,]$lim_inferior
+  for (i in datos_s){
+    if((i >= p[clase,]$lim_inferior) && (i < p[clase,]$lim_superior)){
+      frecuencia_c[clase]=frecuencia_c[clase]+1
+    }
+    else{
+      clase=clase+1
+      frecuencia_c[clase]=frecuencia_c[clase]+1
+    }
+      
+  }
+  
+  #Calcular frecuencia relativa
+  tot=sum(frecuencia_c)
+  frecuencia_rel=numeric(nrow(p))
+  for (i in 1:length(frecuencia_c)){
+    frecuencia_rel[i]=frecuencia_c[i]/tot
+  }
+  
+  tabla_final=cbind(p,fc=frecuencia_c,frc=frecuencia_rel,Fc=cumsum(frecuencia_c),Frc=cumsum(frecuencia_rel))
+  tabla_final
+}
+tabla_final=tabla_agrupados(edades,1)
+```
+
+
+Ya con esto por ejemplo podemos ver el histograma de frecuencias de clase y vemos que la mayoría de los datos
+están en las clases 5 y 6.
+
+```{r,echo=TRUE}
+plot(tabla_final$fc,ylab = "Frecuencia de clase",xlab='Clases',col='green',type='h',lwd=15)
+```
+
+Otra forma de obtener el histograma de forma más directa es con el código siguiente, y como vemos
+el resultado es distinto pues la agrupación es diferente.
+
+```{r,echo=TRUE}
+hist(edades, breaks = 8, right = FALSE, main = "", 
+     ylab = "Frecuencia", xlab = "pesos")
+```
+
+
+Podemos hacer el agrupamiento también con ayuda de funciones de R, la primera hace los cortes en
+los intervalos que considera y sustituye los datos por un par de limite inferior y superior
+que es al que pertenecen, así se forma un factor, si se indica el parametro `labels=FALSE`
+en lugar del intervalo se coloca la clase a la que pertenencen o bien podemos
+igualarla a un vector de etiquetas como por ejemplo la marca de clase y que esa sea su
+etiqueta.
+
+```{r,echo=TRUE}
+tabla1<-cut(datos, breaks = 8, right = FALSE)
+tabla1
+```
+
+# Estadísticos de tendencia central
+
+## Datos no agrupados
+
+Para calcularlas tenemos funciones que facilitan bastante el trabajo. La media muestral
+que representamos como $\bar{x}$.
+
+```{r,echo=TRUE}
+mean(edades)
+```
+
+La mediana la representamos con $\tilde{x}$.
+
+```{r,echo=TRUE}
+median(edades)
+```
+
+
+
+## Datos agrupados
+
+A continuación se presentan las instrucciones y ejemplos para calcularl lk¿os estadísticos.
+
+1- $\bar{X}$
+
+Sean $X_{c_{1}},...,X_{c_{k}}$ marcas de clase con frecuencias absolutas de clase $f_{c_{1}},...,f_{c_{k}}$
+respectivamente. Entonces definimos a la media muestral como :
+\begin{equation}
+  \bar{x}=\dfrac{\sum_{i=1}^{k}f_{c_{i}}X_{c_{i}}}{n}
+\end{equation}
+
+```{r,echo=TRUE}
+media_muestral=sum(tabla_final$Xc*tabla_final$fc)/length(datos)
+media_muestral
+```
+
+2- Mediana $\tilde{X}$
+
+Usamos el *intervalo critico para la mediana* $[L_c,L_{c+1}) $, al primer intervalo donde
+la frecuencia relativa acumulada sea mayor o igual que 0.5.
+
+Denotemos con $n_{c}$ su frecuencia absoluta, por $A_{c}$ su amplitud y por $N_{c-1}$ la frecuencia
+acumulada del intervalo inmediatamente anterior o 0 si no hay intervalo anterior. Entonces $M$ será
+una aproximación para la mediana de los datos "reales" a partir de los agrupados.
+\begin{equation}
+  M=L_{c}+A_{c}\dfrac{\frac{n}{2}-N_{c-1}}{n_{c}}
+\end{equation}
+
+Y podemos ver un ejemplo de como es su calculo.
+
+```{r,echo=TRUE}
+mediana_agrupados<-function(datos,tabla_final){# Se requiere tabla_final que sale de tabla_agrupados
+  n=length(datos)
+  for (i in 1:nrow(tabla_final) ){
+    if(tabla_final$Frc[i]>=0.50){
+      Lc=tabla_final$lim_inferior[i]
+      A=tabla_final$lim_superior[i]-Lc
+      nc=tabla_final$fc[i]
+      if((i-1)>=1){
+        Nc=tabla_final$Frc[i-1]
+      }
+      else{
+        Nc=0
+      }
+    break
+    }
+  }
+  M=Lc+(A*(((n/2)-Nc)/nc))
+  M
+}
+mediana_agrupados(datos,tabla_final)
+```
+
+# Moda
+
+La moda  se sustituye por el intervalo modal, que es la clase con mayor frecuencia (absoluta o relativa, tanto da).
+
+En el caso en que un valor numérico fuera necesario, se tomaría su marca de clase.
+
+```{r,echo=TRUE}
+intervalo_modal=tabla_final[tabla_final$frc==max(tabla_final$frc),c("lim_inferior","lim_superior")]
+print(intervalo_modal)
+moda_agrupados=tabla_final[tabla_final$frc==max(tabla_final$frc),"Xc"]
+print(moda_agrupados)
+```
+
+# Estadísticos de dispreción 
+
+## Datos agrupados
+
+La desviación estandar($S$) y la varianza($S^2$) R las calcula como muestrales directamente.
+
+```{r,echo=TRUE}
+sd(edades)
+var(edades)
+```
+´
+Otra medida importante es la *desviación media* que la definimos como:
+$\bar{DM}=\dfrac{\sum_{i=0}^{n}|x_{i}-\bar{x}|}{n}$
+
+y la calculamos en R como:
+
+```{r,echo=TRUE}
+mean(abs(datos-mean(datos)))
+```
+
+Otro más es el *Coeficiente de variación* definido como $V=\dfrac{S}{\bar{x}}\times 100$.
+
+Los calculos para la varianza y desviación media para *datos agrupados* 
+siguien los mismos pasos que para datos no agrupados, solo se cambia el iterable por un iterable sobre
+las marcas de clase, con la media como la media de esas frecuencias.
+
+```{r,echo=TRUE}
+var(tabla_final$Xc)
+```
+
+El coeficiente de variación se calcula de forma manual o se usa el paquete *pastecs*.
+
+# Estadísticos de posición
+
+## Datos no agrupados
+
+Para encontrar un cuantíl utilizamos la siguiente función.
+
+```{r,echo=TRUE}
+quantile(edades,0.25)
+```
+
+Y de hecho hay una función que calcula de inmediato el rango intercartil,i.e, $RI=Q_{3}-Q_{1}$.
+
+```{r,echo=TRUE}
+IQR(edades)
+```
+
+
+## Datos agrupados
+
+Tenemos una forma para aproximar los cuantiles "reales" a través de los datos agrupados:
+$ Q_p=L_p+A_p\dfrac{pn-N_{p-1}}{n_p}$
+
+donde el intervalo $[L_{p},L_{p+1})$ denota el primer intervalo cuya frecuencia relativa acumulada es mayor a p. Recordemos que $n_{p}$ su frecuencia absoluta, por $A_{p}$ su amplitud, por $N_{p-1}$ la frecuencia
+acumulada del intervalo inmediatamente anterior o 0 si no hay intervalo anterior y $n$ la cantidad
+de datos agrupados.
+
+```{r,echo=TRUE}
+aprox.quantile<-function(p,tabla){#Debe ser tabloa_final
+  tabla_final=tabla # Por comodiad ya que hice copy paste
+  n=nrow(tabla_final)
+  for (i in 1:n ){
+    if(tabla_final$Frc[i]>=p){
+      Lp=tabla_final$lim_inferior[i]
+      A=tabla_final$lim_superior[i]-Lp
+      np=tabla_final$fc[i]
+      if((i-1)>=1){
+        Np=tabla_final$Frc[i-1]
+      }
+      else{
+        Np=0
+      }
+    break
+    }
+  }
+  Qp=Lp+ (A* ( ( (p*n)-Np )/np ) )
+  Qp
+}
+aprox.quantile(0.50,tabla_final)
+```
+
+
+# Momentos
+
+Los momentos para datos agrupados se calculan de la misma forma que para no agrupados usando la marca
+de clase como valor entrante. Tenemos la función **moments** del paquete 'e1071' que nos ayuda a
+calcularla.
+
+# Estadisticos de forma
+
+Tenemos a dos estadisticos muy importantes, pero que son los menos conocidos, el sesgo y la curtosis;
+empecemos con el sesgo. Es una medida de asimetria de la distribución.
+
+Podemos ver en la imagen que los datos de edades están ligeramente sesgados a la izquierda, un sesgo
+negativo.
+
+```{r,echo=TRUE}
+plot(density(edades))
+```
+
+Para calcularlo tenemos diferentes formas, una es el calculo del *coeficiente momento sesgo*:
+$a_3=\dfrac{m_3}{m_{2}^{3/2}}$, la división es para hacerla una medida adimensional;
+que en el caso de ser negativo indica un sesgo negativo. La función
+de abajo regresa los mismo valores que skew. Así que confirmamos que hay un sesgo negativo.
+
+```{r,echo=TRUE}
+coef_sesgo<-function(datos){
+  a3=( moment(datos,order = 3,center = TRUE) / (moment(datos,order=2,center=TRUE)**(1.5) ) )
+  a3
+}
+coef_sesgo(edades)
+```
+
+El otro termino, la curtosis mide "puntiagudez" de la distribución, tomando como referencia la distribución normal.
+
+Y por ejemplo en la gráfica de la anchura de los petalos vemos que es *leptocurtica*, con un tipo
+de pico en la cima. Si la gráfica estuviera aplanada le diriamos *platocurtica*. El
+coeficiente momento curtosis lo calculamos como $a_{4}=\dfrac{m_4}{m_2 ^{2}}$, si es mayor a 3 este coeficiente decimos que es leptocurtica, si es igual a 3 es *mesocurtica*, algunas mediciones usan esa misma definición pero restandole el 3.
+
+En el ejemplo confirmamos que la distribución de los datos es leptocurtica.
+
+```{r,echo=TRUE}
+plot(density(iris$Sepal.Width))
+coef_curtosis<-function(datos){
+  a4=(moment(datos,order = 4,center = TRUE) / ( moment(datos,order = 2,center = TRUE) **2  ))
+  a4
+}
+coef_curtosis(iris$Sepal.Width)
+``` 
+ 
+Como nos dice la pagina [codeburst](https://codeburst.io/2-important-statistics-terms-you-need-to-know-in-data-science-skewness-and-kurtosis-388fef94eeaa) la curtosis sirve para ver si hay datos atípicos en la
+distribución, si tenemos *alta curtosis*(>3) es un indicativo de precensia de datos atípicos
+pues quiere decir que las colas son amplias, es decir que estan lejos del centro, a diferencia 
+del las que tienen *baja curtosis* que tienen colas ligeras pues casi todos los datos estan repartidos.
+
+Tenemos además un par de coeficfientes que también nos ayudan a medir la asimetria.
+
+- El primer coeficiente de Pearson:
+$1erC=\dfrac{\bar{x}-\hat{x}}{s}$
+
+- Y el segundo coeficiente de Pearson, que es especial para curvas de frecuencia unimodales que
+son moderadamente asimetricas:
+$2doC=3 \dfrac{\bar{x}-\hat{x}}{s}$
+
+Más información en [Kurtosis](https://www.analyticsvidhya.com/blog/2021/05/shape-of-data-skewness-and-kurtosis/)
+
+- Medida de Yule-Bowley o Cuartilica:
+$As=$
+
+- Coeficiente percentil sesgo:
+
+# Diagramas
+
+## Tallo-hoja
+
+Es como un histograma volteado, pero que nos da más información. Su construcción es sencilla,
+en el lado izquierdo tenemos las unidades y este será el *tallo*, mientras que a la derecha están las
+decimas en las *hojas*, cada dato aporta su unidad y su decima, así en el diagrama de abajo vemos que hay cuatro
+datos que tienen el valor 18 por que están en el tallo 18 4 datos y además que no tienen decimas. Esto se puede hacer tanto para unidades y decimas como para horas y minutos, millares y centenas, etc.¨
+
+```{r,echo=TRUE}
+stem(edades)
+```
+
+## Caja-Bigote
+
+Este diagrama es una herrmaienta muy útil para muchas cosas, puedes ver datos atípicos de una variable,
+puedes var los diagramas de una variable dividida por grupos y darte cuenta si los grupos, al menos en
+apariencia, son diferentes estadísticamente, entre muchas otras cosas.
+
+La caja tiene marcada una linea marcada en el centro que es la *mediana* y la caja esta boerdeada por
+el cuartíl uno *Q1* y el cuartíl 3 *Q3*, la distancia entre el tercer y primer cuartíl es la que
+llamamos *rango intercuartíl* que justamente se usa para delimitar lso "bigotes", es decir
+las lineas que salen de la caja, estas lineas llegan hasta el elemento minimo o máximo de la mustra
+siempre que dicho elemento no exceda la distancia de 1.5 veces del rango intercuartíl medida desde
+la mediana, en el ejemplo de abajo vemos como la linea de arriba llega hasta el máximo que es 35 y ahí se detiene, pero la otra llega hasta el limite de 1.5 veces el rango intercuartíl para detenerse y abajo de ella
+vemos un punto, este punto es un valor extremo que se encuentra muy lejos de la mediana.
+
+En la segunda imagen podemos ver una comparación de valores en la longitud de los sepalos de una flor dependiendo de su especia, y vemos que hay una gran separación.[2^]
+
+[2^]:[Otros gráficos y más](https://bookdown.org/jboscomendoza/r-principiantes4/diagramas-de-caja.html)
+
+```{r,echo=TRUE}
+edades<-round(runif(100,18,30))
+edades<-c(edades,c(5,16,35))# Crear datos atípicos
+boxplot(edades)
+boxplot(iris$Sepal.Length~iris$Species, col = c("orange3", "yellow3", "green3"))
+```
+
+
+

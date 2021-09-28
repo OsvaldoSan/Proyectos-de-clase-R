@@ -1,0 +1,90 @@
+---
+title: "ANOVA"
+author: "Osvaldo"
+date: "16/4/2020"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(lmtest)
+library(alr3)
+library(apaTables)
+library(GGally)#Graficos de dispercion multiples
+library(corrplot)#graficas de correlacion
+library(car)#vif
+require(car)
+```
+
+```{r datos,echo=FALSE}
+recubrimiento <-c('I','I','I','I','I','II','II','II','II','II','III','III','III','III','III','IV','IV','IV','IV','IV')
+observaicones <-c(56.0,55,62.0,59,60,64,61,50,55,56,45,46,45,39,43,42,39,45,43,41)#lechugas
+datos<-data.frame(recubrimiento=recubrimiento,observaicones= observaicones)
+```
+
+# Diseño de experimentos
+
+## Diagrama de cajas
+Realizaremos un diagrama de cajas para ver el comportamiento de los datos correspondientes a cada recubrimiento:
+```{r box,echo=FALSE}
+ggplot(data=datos,aes(x=recubrimiento,y=observaicones,color=recubrimiento))+
+    geom_boxplot() +
+    theme_bw()+
+    labs(y="Observaciones")
+```
+
+Con estos gráficos podemos ver que el recubrimiento I y II difieren notablemente del III y IV, lo cual parece indicar que el recubrimiento si afecta a la conductividad; dándonos como resultado que los recubrimiento I y II generan mayor conductividad(asumiendo que a mayor sea el numero en la observación mejor sera la conductividad) que los otros dos recubrimientos que estarían teniendo un efecto similar sobre la conductividad en torno al 43.
+La diferencia entre los dos primeros recubrimientos y los dos últimos es bastante marcada ya que los datos mas alejados de la mediana del recubrimiento II(que es el que presenta observaciones mas pequeñas) o mas cercanos al cero que serian en torno al __50__ ni siquiera "tocan" a los datos mas altos que presentan los últimos recubrimientos que están en torno al __46__.
+
+## ANOVA
+
+```{r anova1,echo=FALSE}
+anova<-aov(observaicones~recubrimiento)
+summary(anova)
+```
+
+El _anova_ nos confirma lo que ya suponíamos por el diagrama de cajas y es que como se ve resulto _significante_ lo cual indica que se rechaza la hipótesis nula por lo que ahora estamos seguros de que hay medias que son diferentes entre si, lo cual significa que realmente hay incidencia en la conductividad por parte del tipo de recubrimiento pero no sabemos cuales son los recubrimientos que causan esto. Aunque por el diagrama de cajas sabemos que probablemente sean las medias de I y II contra III y IV.
+
+Para corroborarlo utilizaremos un de las tantas pruebas _post-hoc_, dada la situación del problema que son pocos niveles en el factor podríamos usar el _Bonferroni-test_ pero optamos por usar el _Holm-Bonferroni_ ya que por la forma en que se ejecuta este, que hace que el valor de $\alpha$ se corrija secuencialmente lo vuelve un método menos conservativo que el _Bonferroni_ original.
+```{r bonfe,echo=FALSE}
+pairwise.t.test(x = datos$observaicones, g = datos$recubrimiento, p.adjust.method = "holm"
+                ,pool.sd = TRUE, paired = FALSE, alternative = "two.sided")
+```
+
+
+Este test confirma las sospechas de que son los recubrimientos I y II contra III y IV los que causan que se note esa "incidencia", con esto podemos ver que entre el recubrimiento I y II no hay incidencia y daría igual cual de estos dos utilices y lo mismo para III y IV, no importa cual de estos dos utilices, pero habrá una diferencia estadística si dejas de utilizar el I por el III o el I por el II por que estos provocan diferencia significativa en la conductividad.
+
+## Comprobación de supuestos
+
+### Independencia
+
+Dado que el enunciado nos dice que se obtuvieron de manera totalmente aleatoria los datos, según la teoría podemos asumir independencia(Montgomery).
+
+### Normalidad
+
+Para esto veremos un gráfico de cuantiles para ver si siguen una linea normal nuestros datos.
+
+```{r datos23,echo=FALSE}
+qqnorm(anova$residuals)
+qqline(anova$residuals)
+```
+
+
+Con el cual podemos ver que sigue una distribución prácticamente normal.Pero igual podemos corroborarlo con el shapiro test.
+```{r shap,echo=FALSE}
+by(data = datos,INDICES = datos$recubrimiento,FUN = function(x){ shapiro.test(x$observaicones)})
+```
+
+En el cual vemos que ningún nivel de nuestro factor(el recubrimiento) presenta falta de normalidad.
+
+### Homocedasticidad
+
+Para esto usaremos directamente el test de levene.
+```{r levene,echo=FALSE}
+leveneTest(observaicones ~ recubrimiento,datos,center = "median")
+```
+
+El cual nos da un p-value mayor a 0.05 por lo que no podemos rechazar la hipótesis inicial de que las varianzas no son homogéneas, de cualquier manera dado que nuestro modelo esta balanceado en teoría no afectaría la falta de homocedasticidad.

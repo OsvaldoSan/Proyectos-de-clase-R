@@ -1,0 +1,132 @@
+---
+title: "Análisis de serie de tiempo: Pasajeros de aerolineas"
+author: "Martín Osvaldo Santos Soto"
+date: "25/3/2021"
+header-includes:
+  - \usepackage[spanish]{babel}
+output:
+    pdf_document: 
+      fig_caption: yes
+      number_sections: yes
+      toc: yes
+csl: apa.csl
+bibliography: Pronosticos.bib
+linkcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Librerias para diseño general
+library(xtable)
+options(xtable.floating = TRUE)# Es true para que latex reconozca que es una tabla
+options(xtable.timestamp = "")
+#Librerias para el proceso
+library(descomponer)
+
+```
+
+\listoffigures
+\listoftables
+\pagebreak
+
+```{r cargarDatos, include=FALSE}
+AP<-AirPassengers
+```
+
+# Visualización y análisis básico de la serie de tiempo
+La serie de tiempo es sobre la cantidad de pasajeros por mes en Estados Unidos en miles [@metcalfe_introductory_2009].[^1] En la figura 1 se muestra como esta formada la serie.[^2]
+
+[^1]:[Como citar en marckdown](https://rpubs.com/med11/referencias_rmarkdown)
+[^2]:[Manual de RMarckdown](https://bookdown.org/gboccardo/manual-ED-UCH/introduccion-al-uso-de-rmarkdown-para-la-compilacion-de-resultados-de-rstudio-en-diferentes-formatos.html#aspectos-generales-formato-de-texto)
+
+```{r mostrarSerie,results='asis',echo=FALSE}
+#results='asis' es para que se tome directamente la de R y marckdown no la modifique
+print(xtable(AP, digits = 0,caption = "Serie de tiempo"),comment = FALSE)
+# Para saber como usar xtable vease xtableGallery
+```
+
+Podemos obtener una mejor idea sobre la serie al gráficarla como se muestra en la figura 1.
+
+```{r graficaSerie,fig.cap='Gráfica de pasajeros',echo=FALSE}
+plot(AP,ylab="Passengers (1000's)",xlab='tiempo',main='Pasajeros en Estados Unidos',col='blue')
+```
+
+En la serie podemos notar a simple vista que la cantidad de pasajeros promedio que viajan va aumentando con el
+paso del tiempo, aunque hay algunos picos y valles que parecen repetirse. En la figura 2 podemos apreciar
+un diagrama de *caja-bigote* que muestra que hay ciertos meses que presentan una mayor demanda a lo largo de 
+los registros, estos son principalmente las vacaciones de verano.
+
+```{r cajaTsAP,fig.cap='Diagrama de caja-bigote',echo=FALSE}
+Month <-  factor(cycle(AP), levels = 1:12, labels = month.abb)
+myColors <- ifelse(levels(Month)== 'Jan', "cyan" , 
+                   ifelse(levels(Month)=='Jul', rgb(0.8,0.1,0.3,0.6),
+                          ifelse(levels(Month)=='Aug','red',"gray90" )
+                          ) )
+boxplot(AP ~ Month,xlab = 'Meses',col=myColors)
+```
+
+
+
+## Análisis de autocorrelación
+Con este análisis de autocorrelaciones se busca identificar si hay estacionariedad en la serie, figura 3 presenta el correlograma asociado a las autocorrelaciones de la serie de tiemop.
+
+```{r correlograma,fig.cap='Autocorrelación',echo=FALSE}
+acf(AP)
+```
+
+Aparecen las autocorrelaciones con *lags* de diferencia de acuerdo a los meses, la medición esta hecha en años
+por lo que el valor $\frac{11}{12}=0.91666$ equivale al onceavo mes del año; podemos notar de esta manera
+que las variables aleatorias están altamente correlacionadas todas contra todas.
+
+La linea punteada representa los intervalos de confianza al $95\%$para saber si un valor de la autocorrelación debe ser tomado como cero, pero como vemos en este correlograma no se presenta nunca ese caso.
+
+Estos intervalos vienen dados por $-\frac{1}{n} \pm \frac{2}{\sqrt n}$ donde $n$ es la cantidad de observaciones,
+que en el caso particular es $n=144$, por lo que los limites mostrados son $0.159722$ y $-0.173611$.
+
+## Autocorrelación parcial
+
+En este punto buscamos encontrar cuanta autocorrelación hay entre las variables aleatorias con los retrasos pero
+sin que sean afectadas por otras variables aprate del retraso, i.e., se busca la autocorrelación entre $X_{t}$ y
+$X_{t+s}$ en donde $s$ puede valer desde $1$ hasta $22$ meses en el correlograma que se mostrara en la figura 4.
+
+```{r pafc1,fig.cap='Autocorrelación parcial',echo=FALSE}
+pacf(AP)
+```
+
+Como podemos ver las mediciones de un mes se parecen mucho a su inmediato sucesor, además cada las variables
+aleatorias tienen una alta correlación con un retraso de 13 meses, lo cual en principio puede parecer extraño
+pero después de analizarlo un poco es evidente que tiene que ver con el hecho de que si las mediciones de meses
+contiguos son parecidas es de esperar que el mismo mes contiguo pero a un año en el futuro también tenga 
+medicones parecidas. Lo que si es extraño es que no hay correlación entre un mes y el mismo a un año en el futuro.
+
+## Periodograma
+
+Las frecuencias están definidas como $\lambda_{j}=\frac{2\pi j}{T},j=1,..,n$, con $T=144$ y por tanto $n=72$,
+con esto tendriamos que los primeros valores de lambda son $\lambda_{1}=\frac{2\pi}{144},\lambda_{2}=\frac{2\pi 2}{144}=\frac{2\pi}{72},\lambda_{3}=\frac{2\pi3}{144}=\frac{2\pi}{48},...,\lambda_{72}=\frac{2\pi72}{144}=\pi$.
+Si nos fijamos en la salida del periodograma de abajo podemos notar que los valores de *omega* son en realidad
+los valores correspondientes a la frecuencia en la que se encuentran,así que por ejemplo $\lambda_{1}=0.04363$.
+Pero como sabemos la frcuencia angular es la frecuencia multiplicada por $2\pi$, por lo que entonces el periodo
+vendra dado como $p_{j}=\dfrac{2\pi}{\lambda_{j}}$[@parra_econometria_2020]. 
+
+```{r periodo,results='asis',echo=FALSE}
+print(xtable(periodograma(AP)[0:13,],caption="Valores para el periodograma"),comment=FALSE)
+```
+
+En la tabla que se muestra podemos ver los valores de $\lambda_{j}$ en la columna llamada *omega* y el periodo
+correspondiente a dicha frecuencia en la columna *periodos*, finalmente la columna *densidad* representa el
+valor $p_{j}=a_{j}^{2}+b_{j}^{2}$ que es la "importancia" de cada frecuencia en la serie de tiempo.
+
+```{r graficaPeriodograma,fig.cap='periodograma',echo=FALSE}
+gperiodograma(AP)
+```
+
+En el periodograma podemos ver que presenta altos valores en los primeros meses y también que los periodos de 13 meses son de alta importancia en la serie de tiempo.
+
+![Avion](avion.jpg)
+
+# Creación del Modelo Box-Jenkins
+En esta parte crearemos el modelo pedido
+
+
+\pagebreak
+# Bibliografía

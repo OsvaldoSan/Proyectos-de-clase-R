@@ -1,0 +1,296 @@
+---
+title: "Regresión"
+author: "Osvaldo"
+date: "21/3/2020"
+output:
+  pdf_document:
+      fig_caption: true
+      number_sections: true
+bibliography: bibi.bibtex
+---
+\renewcommand*\contentsname{Tabla de contenidos}
+\newpage 
+\tableofcontents
+\listoffigures
+\newpage
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(lmtest)
+```
+```{r head,echo=FALSE}
+#Codigo necesario
+
+  X<-c(0.016,0.027,0.026,0.022,0.057,0.092,0.096)
+  Y1<-c(24.66,18.00,13.63,8.42,7.66,7.64,7.50)
+  Y2<-c(51.7,30.5,29.0,14.2,4.1,5.0,11.6)
+  #-------Comprobacion de supuestos-----------------------
+#----------------Codigo necesario para 5---------
+  #la media muestral
+xbar<-mean(X)
+sum_xx<-sum(X*X)
+S_xx<-sum_xx-(7*xbar*xbar)
+#--------Codigo necesario para G-----
+x <- c(4.5,4.5,4.5,4.0,4.0,4.0,5.0,5.0,5.5,5.0,0.5,0.5,6.0,6.0,1.0,1.0,1.0)
+y <- c(619,1049,1033,495,723,681,890,1522,987,1194,163,182,764,1373,978,466,549)
+datos<-data.frame(x,y)
+```
+
+# Ejercicio E
+
+## Comprobar supuestos
+
+### Para X~Y1
+```{r supuestos }
+  ##1.Independencia
+  datos1<-data.frame(X,Y1)
+  chisq.test(datos1)
+  plot(datos1)
+```
+
+Como tanto el chi-test como la gráfica nos mostraron que no había relacion lineal decidimos no continuar con el modelo para esta parte. Ademas al intentamos transformarlo no conseguimos nada satisfactorio.
+
+### Para X~Y2
+#### 1.Comprobar independencia
+
+```{r supuestos1 }
+  ##1.Independencia
+  datos2<-data.frame(X,Y2)
+  chisq.test(datos2)
+  plot(datos2)
+```
+
+Para este segundo caso nos encontramos con el mismo problema pero en este caso si pudimos solucionarlo al efectuar una transformación.
+
+```{r supuestos2}
+  #Realizando la siguiente transformacion para conseguir linealizar el modelo
+  x<-1/X
+ #1.Independencia
+  datos2<-data.frame(x,Y2)
+  chisq.test(datos2)
+  #H0 son independientes
+  #H1 no lo son
+  #Rechazamos H0 por que p-value<alpha
+```
+
+Por lo tanto como vimos ahora si son linealmente dependientes, ahora solo hay que tener cuidad con todo lo que hagamos ya que no estaremos trabajando sobre el modelo original.
+
+También comprobaremos el grado de correlación que hay entre ellos.
+
+```{r supuestos22}
+  #1.1.Comprobacion de linealidad concorrelacion, usando el coeficiente de pearson
+  cor.test(x = datos2$x,
+          y = datos2$Y2, 
+           alternative = "two.sided",
+           conf.level  = 0.95,
+           method      = "pearson")
+```
+El cual indica una correlación aceptable, con un p-value pequeño por lo que podemos considerarla como significante para la prueba.
+  
+#### 2.Comprobar la No correlación en los residuos
+
+```{r supuesto3}  
+  #Efectuamos la regresion para poder analisarla
+  regresion2<- lm(datos2$Y2 ~ datos2$x , data=datos2)
+ #Obtenemos los residuos estandarizados
+   res2<-rstandard(regresion2)
+#Podemos ver como estan los residuos en el siguiente grafico
+ plot(datos2$x,res2,xlab = "X",ylab = "Residuos")
+ abline(h=0)
+ #Pasamos a ralizar un durbin-watson test
+    #No rechazar H0, es que no hay autocorrelacion
+    #Rechazar H0, es que hay autocorrelacion
+    #Si p-value es pequeño rechazamos H0 
+ dwtest(regresion2,alternative = "two.sided")
+  #no podemos rechazar H0 por que p-value es grande
+```
+
+#### 3.Prueba de normalidad
+```{r supuesto44}
+  #Realizamos un histograma para ver la distribucion de los errores
+  hist(res2)
+  #Realizamos una prueba de bondad de ajuste para verificar la normalidad en los errores
+ shapiro.test(res2)
+  #con lo que comprobamos su normalidad, ya que no se rechaza H0
+```  
+ 
+#### 4.Prueba de Homocedasticidad
+```{r supuesto4}
+ #Realizamo un bp test para comprobarlo
+ bptest(regresion2)
+  #con un p-value mayor a 0.05 rechazamos H0, 
+  #por lo que decimos que hay homocedasticidad de varianzas
+```
+Con lo que concluimos la revisión del modelo y ahora si podemos trabajar con el.
+
+## 1.Evaluar el modelo
+
+- Modelo sin transformar
+
+```{r E2,echo=FALSE}
+    plot(X,Y2)
+```
+ 
+-  Modelo transformado para poder trabajar con `x=1/x`
+  
+```{r E3,echo=FALSE}  
+  plot(x,Y2)
+```
+
+## 2.Suma de residuales
+
+```{r suma}
+sum_res<-(1.19+0.63+0.35-1.98-0.71-0.02+0.86)  
+sum_res
+```
+  
+  El cual podemos decir que es un valor cercano a 0.
+  
+## 3.ANOVA
+
+```{r E4}
+anova(regresion2)
+```
+
+Lo que nos indica la tabla anova es que la variabilidad explicada por 'x' es mayor que la que queda sin explicar(residuales). Ademas dado que el valor de F=13 podemos decir que nuestro modelo tiene una buena capacidad predictiva, y si nos fijamos en el p-value podemos confirmar esto ya que el p-values es menor que 0.05, nuestra alpha por defecto, con lo que podemos afirmar que el valor de F es significante.
+
+## 4.Errores estándar de b0 y b1
+```{r E5}
+summary(regresion2)
+```
+El resumen de la regresión nos muestra los siguientes resultados:
+se(b0)=7.4083
+se(b1)=0.2026
+
+## 5. Error estándar de 'ý' e intervalo de confianza para la media de valores esperados
+
+La formula para el error estándar es la siguiente:
+
+![Formula[@analisis_draper].](/home/oszwaldo/MEGAsync/Estadistica/Estadistica_ll/R/Regresion_1/E_5.png)
+
+Por lo que necesitamos calcular algunas cosas
+
+```{r Calculo}
+  #La media muestral estara dada por xbar
+  #S_xx es S_xx
+  #Cel anova obtenemos SS_res
+  SS_res<-471.98
+  #s=estimador del error estandar sigma
+  s<-sqrt(SS_res/5)
+  #Un dato en especifico de x
+  x_0<-0.1
+  #q := observaciones
+  q<-6
+  #definimos al error estandar buscado como:
+  se_yhat<-s*sqrt((1/q)+(1/5)+(((x_0-xbar)^2)/S_xx))
+  se_yhat
+  #Ahora el valor t(5,0.025)=2.571
+  t_val<-2.571
+  #Con y_0 como estimador puntual del valor yhat regresado por x
+  #y no debemos olvidar la transformacion que hicimos, por lo tanto x_o debe sustituirse por su inversa
+  #Esto solo se realiza en esta parte por que aqui ocupamos valores regresados por la regresion hecha con la transformacion
+  #Y SS_res esta definido unicamente por valores y y sus estimados
+  y_0<--3.01357+(0.75217)*(1/x_0)
+  #Limiteinferior del intervalo:LI y limite superior:LS,
+  LI<-y_0-(t_val*se_yhat)
+  LS<-y_0+(t_val*se_yhat)
+  #Abajo del error estandar apareceran los limites inferior y superior del intervalo
+  LI
+  LS
+```
+Ahora un ejemplo de 6 valores de 'ý' estimados a partir de distintos valores de x sobre el rango que tiene actualmente la variable regresora.
+```{r vars}
+#Valores de x y y
+x_p<-c(0.97,0.98,0.9875,0.99,0.9753,0.97654)
+y_p<-c(3.01357+(0.75217)*(1/x_p[1]),3.01357+(0.75217)*(1/x_p[2]),
+       3.01357+(0.75217)*(1/x_p[3]),3.01357+(0.75217)*(1/x_p[4]),
+       3.01357+(0.75217)*(1/x_p[5]),3.01357+(0.75217)*(1/x_p[6]))
+plot(x_p,y_p)
+```
+
+En el cual podemos ver una buena relación lineal para valores sobre el rango de x
+
+## 6. F-test para ver que tanto de la variación de 'ybarra' queda explicada por la linea de ajuste
+
+Para esto usaríamos la tabla anova, y usaríamos los valores SS_r y SS_T para calcular el coeficiente de determinación de la prueba y ver que tanto de la variabilidad queda explicada, Pero dado que estamos trabajando con una transformacional hay que ser muy cuidadosos con esto, así que mejor optamos por calcular el coeficiente de determinación con la formula de la correlación de pearson y sabemos que la correlación al cuadrado es el coeficiente de determinacion(Montgomery).
+```{r ftest}
+R_pearson<-cor(x =  datos2$x,
+    y = datos2$Y2,
+    method = "pearson")
+R2_pearson<-R_pearson^2
+R2_pearson
+```
+ Con lo que notamos que si coeficiente de determinación es alto, por lo tanto mucha de la variabilidad de 'y' queda explicada por la regresión.
+
+
+\newpage
+# Ejercicio G
+## Comprobación de supuestos
+
+#### 1.Independencia
+```{r i1}
+chisq.test(datos)
+#Dado que la prueba chi no nos sirve usmos solo la correlacion
+
+##1.1.Comprobacion de linealidad concorrelacion, usando el coeficiente de pearson
+cor.test(x = datos$x,
+         y = datos$y, 
+         alternative = "two.sided",
+         conf.level  = 0.95,
+         method      = "pearson")
+```
+El cual indica una correlación aceptable con una gran significancia, por lo tanto podemos proseguir.
+
+#### 2.Análisis de residuos, comprobar no correlación entre estos
+```{r an}
+regresion<- lm(datos$y ~ datos$x , data=datos)
+res<-rstandard(regresion)
+#No rechazar H0, es que no hay autocorrelacion
+#Rechazar H0, es que hay autocorrelacion
+#Si p-value es pequeño rechazamos H0
+plot(datos$x,res,xlab = "X",ylab = "Residuos")
+abline(h=0)
+#durbin-watson test
+dwtest(regresion,alternative = "two.sided")
+###no podemos rechazar H0 por que p-value es grande
+```
+Con esto hemos asegurado que no hay correlación.
+
+#### 3.Prueba de normalidad
+```{r norm}
+#H0 dis.teorica=dist.empirica
+shapiro.test(res)
+hist(res)
+#con lo que comprobamos su normalidad, ya que no se rechaza H0
+```
+
+#### 4.varianza constante
+```{r var}
+bptest(regresion)
+#con un p-value mayor a 0.05 rechazamos H0
+```
+Como podemos ver no hay homocedasticidad de varianzas por lo que podemos empezar a utilizar el modelo.
+
+## Ejercicio 1, Es razonable hacer un modelo de regresión? con un alpha=0.1
+```{r graph,echo=FALSE}
+plot(datos)
+```
+Vemos que parece razonable, pero ejecutamos la regresión y analizamos su tabla anova.
+
+```{r table}
+  reg<-lm(datos$y ~ datos$x , data=datos)
+  anova(reg)
+```
+Con la tabla podemos ver que hay un p-value para F menor a 0.1, con lo cual podemos considerar a la regresión como significante y por tanto es razonable utilizar este modelo.
+
+## Ejercicio 2. Se puede encontrar un mejor modelo?
+Para esto analizaremos la falta de ajuste y el error puro
+```{r err}
+
+```
+
+Con esto vemos que no hay falta de ajuste por lo que podemos decir que este es un buen modelo y no se puede encontrar otro mejor[@analisis_draper].
+
+\newpage
+
+# Bibliografía

@@ -1,0 +1,575 @@
+---
+title: "Actividad 4.2 y 5.3"
+author:
+- "Abdelrrague Manzanares Caleb Elihud"
+- "González Zequeida Helena"
+- "Ramírez Pedraza Ariadna Fernanda"
+- "Santos Soto Martín Osvaldo"
+
+header-includes:
+  - \usepackage[spanish]{babel}
+  - \renewcommand{\and}{\\}
+output:
+    pdf_document:
+      extra_dependencies: "subfig"
+      keep_tex: yes 
+      fig_caption: yes
+      number_sections: yes
+      toc: yes
+date: "3 de Junio del 2021"
+
+---
+
+\listoffigures
+\listoftables
+\pagebreak
+
+```{r setup, include=FALSE}
+# Para añadir dos figuras en una con subcap se agrega a pdf_documentt extra_dependecies:"subfig" y keep_tex:yes
+
+#Link de la información:https://stackoverflow.com/questions/63665513/how-to-add-subfigure-in-r-markdown-bookdown
+
+# Los ejercicios a mano están ahora en media
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(tseries) # Test de Dickey Fuller
+library(forecast)
+library(car)
+library(nortest)
+library(outliers)
+library(lmtest) # Para coeftest
+
+```
+
+# Actividad 4.2
+
+## Análisis de la serie
+
+La serie anexa corresponde a un indicador de muertes por cáncer en cierta comunidad, de 1930 al año 2000. Utilice la serie hasta 1995. Auxíliese de R en la aplicación de todos los conocimientos vistos hasta ahora en el curso para pronosticar el indicador de 1996 al año 2000 y sus respectivos intervalos de confianza. Evalúe su pronóstico. Integre un reporte con una redacción coherente, en donde: se reflejen todos los elementos de análisis que puso en práctica y las alternativas que probó en el desarrollo del trabajo; se argumente cada resultado y gráfico con sustento en la teoría; se explique el apoyo de R, y se presenten sus conclusiones y reflexiones de manera profunda.
+
+```{r graficaSerie, fig.cap='Indicador de muertes por cáncer', echo=FALSE}
+  dataset <- read_excel("Actividad 4.2.xlsx")
+  
+  serie <- dataset$Indice[1:66] # Se toma solo hasta 1996 para tener datos para validar
+
+  serie_completa<- dataset$Indice # la serie completa
+
+  y <- ts(serie, start=1930)
+  y_val <- ts(serie_completa, start=1930)
+  
+  plot(y)
+```
+
+En la $figura\ 1$ podemos notar una tendencia creciente lineal, se estabiliza en los últimos años. Necesitamos observar su ACF y PACF para poder obtener mas información acerca de la serie. A continuación presentamos las dos graficas:
+
+```{r grafica_ACF, fig.cap='Correlogrma de la serie', echo=FALSE}
+  acf(y, main="Correlograma", lag = 30)
+```
+
+En la $figura\ 2$ de la ACF notamos que decrece lentamente indicio de no estacionariedad.
+
+
+```{r grafica_PACF, fig.cap='PACF de la serie', echo=FALSE}
+  pacf(y, main="PACF" , lag=50)
+```
+
+En la $figura\ 3$ de la PACF se trunca en 1. Habría que hacerle un tratamiento a la serie, empezando por un test de Levene para verificar la homocedasticidad o heterocedasticidad, después si lo requiere usar el método de Guerrero y si no seguiríamos con la tendencia haciendo diferenciaciones y proponiendo un modelo ARIMA.
+
+
+```{r Test de , echo=TRUE}
+# Siguiendo el procedimiento de guerreo
+# Sea N=66,  se propone H=9, entonces dejamos fuera a n=3 y R=( (N-n)/H ) = 7 por lo tanto n<R
+# Serán así 7(R) grupos de tamaño 9(H) 
+
+# Funciones para calcular varianza en serie de tiempo
+# Funcion para separa la serie en grupos
+grupos_serie<-function(Hoja.ts,R){
+  N=length(Hoja.ts)
+  #H=10
+  Grupo <-c()
+  ini=1
+  ultimo=tail(seq(R,N,by=R),n=1)
+  grupo<-'I'
+  for (i in seq(R,N,by=R) ){
+    Grupo[(i-R+1):i]<-grupo   # El +1 es por que el operador : es inclusivo de ambos lados
+    grupo<-paste(grupo,'I',sep='')
+  }
+  valor<-as.numeric(Hoja.ts[1:ultimo])
+  New_Hoja<-data.frame(valor,Grupo)
+  New_Hoja
+}
+
+
+R=7
+Hoja_g<-grupos_serie(y,R)
+
+# Hipótesis nula: Las varianzas son iguales(Homogeneas)
+# Si el p-value es menor a la significancia(alpha) se rechaza la hipótesis nula y se dice que las
+# varianzas son heterogeneas
+# Si el p-value es mayor a la significancia no se rechaza la hipótesis nula y se dice que hay homogeneidad
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+```
+
+La hipótesis del test de Levene es que la varianza es homogénea para un $\alpha=0.05$. Con un p-value de 0.2969 en efecto, no se rechaza la hipótesis y no es necesario estabilizar la varianza.
+
+Ahora nos disponemos a observar la tendencia de la serie utilizaremos el test de Dickey y Fuller aumentado:
+
+```{r test_ADF, echo=FALSE}
+ # Hipotesis nula: Hay raíz unitaria y por ende no hay estacionariedad en la serie
+ # Hipotesis alternativa: No hay raíz unitaria y por ende la serie es estacionaria
+ # Si el p-value es menor a la significacncia alpha rechazamos la hipotesis nula y decimos que la serie
+ # es estacionaria
+  adf.test(y)
+```
+La hipótesis nula del ADF es que hay raíz unitaria. No rechazamos la hipótesis nula ya que hay raíz unitaria, por lo que la serie aun no es estacionaria en media.
+
+Mostramos en la $figura \ 4$ la grafica de la serie de tiempo después de la primera diferencia.
+
+```{r serie_diff_1, fig.cap='Serie primera diferencia',echo=FALSE}
+#Figura4
+  d1_y <-diff(y)
+  
+  plot(d1_y)
+```
+
+Aplicamos el ADF para verificar la estacionariedad y notamos que aun no lo es. 
+
+```{r test_ADF_serie1, echo=FALSE}
+  adf.test(d1_y)
+```
+Seguimos con el proceso de diferenciación con una segunda diferencia a la serie. Mostramos su grafica en la $figura \ 5$ y ya notamos un indicio de media constante aunque lo confirmaremos con el ADF.
+
+```{r serie_diff_2, fig.cap='Serie segunda diferencia', echo=FALSE}
+#Figura5
+  d2_y <-diff(d1_y)
+
+  plot.ts(d2_y)
+```
+
+
+Los resultados del ADF nos confirma la media constante, después de dos diferencias a la serie se consigue estacionariedad, el grado de homogeneidad es dos. El test adf de abajo nos lo confirma, pues el p-value es menor
+a una significancia $\alpha=0.05$ por lo que se rechaza la hipótesis nula de no estacionariedad.
+
+
+```{r test_ADF_serie2, echo=FALSE}
+
+  adf.test(d2_y)
+
+```
+
+Con ayuda de las graficas de la ACF Y PACF de la serie diferenciada, propondremos algunos modelos. 
+
+```{r ACF_serie2, fig.cap='ACF serie diferenciada', echo=FALSE}
+#Figura6
+acf(d2_y)
+```
+
+En la $figura \ 6$ correspondiente a la ACF observamos que decrece rápidamente o también podríamos decir que trunca en una barra significativa.
+
+
+```{r PACF_serie2, fig.cap='PACF serie diferenciada', echo=FALSE}
+#Figura7
+pacf(d2_y)
+```
+
+En la $figura \ 7$ correspondiente a la PACF observamos que decrece rápidamente o también podríamos decir que trunca en dos barras significativas.
+
+Después de observar el comportamiento de ambas graficas podemos proponer indicio de los siguientes modelos:
+
+- IMA (2,1) : Este modelo lo proponemos a partir de la serie después de dos diferencias y su ACF que se trunca en la primer barra.
+
+- ARI (2,2) : Este segundo modelo lo proponemos a partir de la serie después de dos diferencias, su ACF que decrece rápidamente y su PACF que se trunca en la segunda barra.
+
+- ARIMA (1,2,1) : A partir de los modelos anteriores nos atrevemos a proponer un modelo mezclado, adicional a que en la función de autocorrelación luego del primer lag decae exponencialmente.
+  
+
+
+\pagebreak
+\pagebreak
+
+## Calculo de parámetros
+
+Una vez identificados los posibles modelos a utilizar, procederemos a calcular sus parámetros con la función ARIMA para los tres modelos $IMA(2,1)$, $ARI(2,2)$ y $ARIMA(1,2,1)$.
+
+
+```{r IMA, echo=FALSE}
+ima <- arima(d2_y, order = c(0, 0, 1),include.mean = TRUE)
+ima
+```
+
+
+```{r ARI, echo=FALSE}
+
+ari <- arima(d2_y, order = c(2, 0, 0))
+ari
+
+```
+
+
+```{r ARIMA, echo=FALSE}
+arima_s2 <- arima(d2_y, order = c(1, 0, 1))
+arima_s2
+```
+
+Siendo estos los parámetros de cada modelo, podemos continuar a la verificación de los supuestos de la metodología de Box-Jenkins. 
+
+\pagebreak
+\pagebreak
+
+
+
+\pagebreak
+\pagebreak
+
+## Verificación 
+
+### Admisibilidad de los modelos 
+
+En el primer modelo $IMA(2,1)$ observamos que el valor de $\theta_1 = -1.0000$ que en valor absoluto no cumple con la desigualdad de ser estrictamente menor a 1, por lo que no cumple con las condiciones de invertibilidad. Por lo tanto descartamos al modelo $IMA(2,1)$.
+
+
+En el segundo modelo $ARI(2,2)$ al ser un modelo autoregresivo de orden dos necesita cumplir con las siguientes condiciones: 
+
+$$ 
+\begin{split}
+  \phi_{2} + \phi_{1} < 1 \\  
+  \phi_{2} - \phi_{1} < 1 \\
+  |\phi_{2}| < 1 
+\end{split}
+$$
+
+Dados los valores de $\phi_{1} = -0.9168$ y $\phi_{2} = -0.4854$, encontramos que se cumplen todas
+las desigualdades, pues:
+
+$$
+\begin{split}
+0.4854 - 0.9168 = -1.4022 < 1 \\
+-0.4854 + 0.9168 = 0.4314 < 1 \\
+0.4858 < 1
+\end{split}
+$$
+
+
+Por lo tanto cumple con la condición de estacionariedad.
+
+En el tercer modelo $ARIMA(1,2,1)$ al ser un modelo mezclado necesita cumplir con las siguientes condiciones:$|\phi_{1}| < 1$ y $|\theta_{1}| < 1$
+
+Dados los valores de $\phi_{1} = -0.22094664$  y $\theta_{1} = -0.99998640$, encontramos que en valor absoluto
+ambos son mayores a 1.
+
+Por lo tanto cumple con las condiciones de estacionariedad e invertibilidad.
+
+
+\pagebreak
+
+### Supuesto de media cero para los residuos 
+
+A continuación mostramos la grafica de los residuos del modelo ARI(2,2):
+
+```{r residuos_ari, fig.cap='Residuos ARI(2,2)', echo=FALSE}
+#Figura8
+r_ari <- ari$residuals
+plot(r_ari)
+```
+
+Y la grafica de los residuos del modelo ARIMA(1,2,1):
+
+```{r residuos_arima,fig.cap='Residuos ARIMA(1,2,1)', echo=FALSE}
+#Figura9
+r_arima <- arima_s2$residuals
+plot(r_arima)
+
+```
+
+Podemos ver que la media es cero pero lo verificaremos con el test t-test.
+
+```{r t-test_ari, echo=FALSE}
+# Hipotesis nula_ la media real es igual a cero
+# H1: La media real no es igual a cero
+# Si el p-value es menor a la significancia alpha se rechaza la hipotesis nula y se dice que no hay media cero
+# Por el contrario, si es mayor no se rechaza la hipotesis nula y se dice que la media es cero
+t.test(r_ari)
+
+```
+
+```{r t-test_arima, echo=FALSE}
+
+t.test(r_arima)
+
+```
+
+Los dos t-test nos arroja que estilísticamente la media es igual a cero, por lo que significa que ese elimino correctamente la tendencia.
+
+
+\pagebreak
+
+### Varianza constante para los residuos 
+
+Utilizaremos el Test de Levene para verificar la varianza en los residuos de ambos modelos.   
+
+```{r Levene_ari, echo=TRUE}
+R=6
+Hoja_g<-grupos_serie(ari$residuals,R)
+
+# Hipótesis nula: Las varianzas son iguales(Homogeneas)
+# Si el p-value es menor a la significancia se rechaza la hipótesis nula
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+```
+
+La hipótesis del test de Levene para el modelo ARI(2,2) es que la varianza es homogénea. Con un p-value de 0.09428 en efecto, no se rechaza la hipótesis y no es necesario estabilizar la varianza.
+
+
+```{r Levene_arima, echo=TRUE}
+R=6
+Hoja_g<-grupos_serie(arima_s2$residuals,R)
+
+# Hipótesis nula: Las varianzas son iguales(Homogéneas)
+# Si el p-value es menor a la significancia se rechaza la hipótesis nula
+print(leveneTest(Hoja_g$valor, group = Hoja_g$Grupo))
+```
+
+El resultado del test de Levene para le modelo ARIMA(1,2,1) es que la varianza es homogénea. Con un p-value de 0.07454 en efecto, no se rechaza la hipótesis nula.
+
+
+\pagebreak
+
+### No correlación mutua de residuales 
+
+Mostramos el ACF Y PACF de los residuales del modelo ARI(2,2) en las figuras 10 y 11:
+
+```{r grafica_ACF_ari, fig.cap='ACF de los residuos del modelo ARI(2,2)', echo=FALSE}
+#Figura10
+  acf(ari$residuals)
+```
+
+
+```{r grafica_PACF_ari, fig.cap='PACF de los residuos del modelo ARI(2,2)', echo=FALSE}
+#Figura11
+  pacf(ari$residuals)
+```
+
+En ninguno de los dos correlogramas del modelo ARI hay indicios de correlación
+
+
+Mostramos el ACF Y PACF de los residuales del modelo ARIMA(1,2,1) en las figuras 10 y 11:
+
+```{r grafica_ACF_arima, fig.cap='ACF de los residuos del modelo ARIMA(1,2,1)', echo=FALSE}
+#Figura12
+  acf(arima_s2$residuals)
+```
+
+
+```{r grafica_PACF_arimas, fig.cap='PACF de los residuos del modelo ARIMA(1,2,1)', echo=FALSE}
+#Figura13
+  pacf(arima_s2$residuals)
+```
+
+Para el modelo arima sucede lo mimo que para el primero, no hay indicios de correlación.
+
+
+```{r L-jung_test_ari, echo=FALSE}
+# Hipotesis nula: Las correlaciones de la población son en realidad cero
+# Hipotesis alternativa: Las correlaciones no son cero, hay correlación
+
+# En realidad el test habla más precisamente de la independencia en la muestra, pero es aplicable
+# para las correlaciones
+Box.test(ari$residuals, type = "Ljung")
+
+```
+
+Al aplicar el test de Ljung-Box para el modelo ARI(2,2) dale un p-value mayot a 0.05 por lo que no rechazamos la hipótesis nula de no autocorrelacion, por lo tanto decimos que no están autocorrelacionadas.
+
+
+```{r L-jung_test_arima, echo=FALSE}
+
+Box.test(arima_s2$residuals, type = "Ljung")
+
+```
+
+Al aplicar el test de Ljung-Box para el modelo ARIMA(2,2) sale un p-value mayor a 0.05 por lo que no rechazamos la hipótesis nula de no autocorrelacion, por lo tanto decimos que no están autocorrelacionadas.
+
+
+
+\pagebreak
+
+### Normalidad de los residuales
+
+En la figura \ref{fig:residuosNormal} vemos una comparación entre los cuantiles teoricos de una distribución
+normal y los cuantiles de la muestra de los residuos, con ello podemos apreciar si se distribuyen normalmente
+o no, en este caso indica que siguen una distribución normal.
+
+```{r residuosNormal,fig.cap="\\label{fig:residuosNormal}Normalidad en los residuos",echo=FALSE}
+qqnorm(ari$residuals)
+qqline(ari$residuals)
+```
+
+Con una prueba de bondad de ajuste Anderson-Darling verificamos que en ambos modelos sus residuales se distribuyen normalmente.
+
+```{r ad.test_ari, echo=FALSE}
+# H0:La muestra proviene de una distribución normal
+# H1: La miestra no proviene de una distribución normal
+# Si el p-values es menor a alpha se rechaza la hipótesis nula y se dice que no hay normalidad en los datos
+# Si el p-value es mayor a la significancia alpha no se rechaza la hipótesis nula
+ad.test(ari$residuals)
+
+```
+
+```{r ad.test_arima, echo=FALSE}
+
+ad.test(arima_s2$residuals)
+
+```
+
+Para ambos modelos su p-value es mayor a 0.05 lo que significa que sus residuales se distribuyen normalmente.
+
+
+
+\pagebreak
+
+### No existencia de observaciones aberrantes
+
+Con un diagrama de caja-bigote que se puede observar en la figura \ref{fig:cajaBigoteRes} vemos que
+en ambos modelos hay datos que están más aya del tercer cuantíl de su muestra, lo que indicaría datos
+atipícos, pero lo corroboraremos con el test de Grubbs.
+
+```{r cajaBigoteRes,out.width="49%",fig.cap="Diagrama caja-Bigote",fig.subcap=c("ARI(2,2)","ARIMA(1,2,1)"),echo=FALSE}
+boxplot(ari$residuals)
+boxplot(arima_s2$residuals)
+```
+
+
+Verificamos en los datos observaciones aberrantes con el test de Grubbs.
+
+```{r grubbs_ari, echo=FALSE}
+# Hipótesis nula: No hay datos atípicos
+# Hipótesis alternativa: Hay exactamente un outlier
+# Si el p-values es menor al nivel de significancia alpha se rechaza la hipótesis nula y se dice que hay un dato
+# atípico, el que menciona la hipótesis alternativa y puede ser el más pequeño o más grande
+grubbs.test(ari$residuals)
+
+```
+
+
+```{r grubbs_arima, echo=FALSE}
+grubbs.test(arima_s2$residuals,two.sided = TRUE)
+```
+
+En ambos casos los valores extremos no representan datos atípicos pues el p-value es mayor al nivel de
+significancia 0.05 y no se rechaza la hipótesis nula de que no hay datos atípicos.
+
+
+
+\pagebreak
+
+### Parsimonia del modelo
+
+Verificamos la importancia de cada uno de los parámetros dentro de los modelos respectivos con el t-test.
+
+```{r t-test_coef1, echo=FALSE}
+# Total de observaciones menos parametros del modelo, menos intercepto,menos diferenciaciones
+# df=N-2-1-1=66-4=62
+coeftest(ari,ari$var.coef,df=62)
+
+# La hipótesis nula es que el termino no es significativamente diferente a cero, por lo que
+# no hay relación alguna entre el termino y la respuesta.
+
+# Si el p-value es menor a la significancia alpha se rechaza H0 el termino es significativo
+```
+
+
+```{r t-test_coef2, echo=FALSE}
+
+coeftest(arima_s2)
+
+```
+
+En todos los coeficientes encontramos que son muy importantes los parámetros, dado que su p-value es menor a 0.05.
+
+
+
+\pagebreak
+
+### Comparación de modelos
+
+Ahora usaremos una la métrica BIC para comparar los modelos.
+
+```{r comparacion, echo=FALSE}
+
+bic1<-AIC(ari, k = log(length(sunspots)))
+
+bic2<-AIC(arima_s2,k = log(length(sunspots)))
+
+print(paste0("El valor de BIC de ARI = ",bic1))
+
+print(paste0("El valor de BIC de ARIMA = ",bic2))
+
+```
+
+Encontramos que dado esta métrica es mejor el modelo ARIMA pues tiene un menor BIC.
+
+
+
+\pagebreak
+\pagebreak
+
+## Vista gráfica del ajuste de la serie
+
+En la figura 14 y 15 observamos que tan bien ajusta cada modelo a la serie diferenciada dos
+veces.
+
+```{r serDifGraf1,fig.cap="Ajuste del modelo ARI(2,2) a la serie",echo=FALSE}
+y_g1<-fitted(ari)
+# Figura 14
+# Opción con lineas en lugar de puntos
+# plot(d2_y)
+# lines(y_g1, col='red')
+matplot(cbind(d2_y,y_g1),type='l')
+```
+
+
+```{r serDifGraf2,fig.cap="Ajuste del modelo ARIMA(1,2,1) a la serie",echo=FALSE}
+# Figura 15
+y_g2<-fitted(arima_s2)
+matplot(cbind(d2_y,y_g2),type='l')
+```
+
+
+Como podemos notar ambas parecen tener un buen ajuste, ahora veamos como les va en la validación
+
+
+\pagebreak
+
+## Validación
+
+Primero en la figura \ref{fig:SerieCompletaA1} mostraremos la serie dos veces diferenciada completa, y en la
+figura \ref{fig:SerieCompletaA2} nos fijamos particularmente en los últimos 5 años.
+
+```{r SerieCompletaA,out.width='45%',fig.cap="Serie completa",fig.subcap=c("Toda la serie","Últimos 5 valores"),echo=FALSE}
+# Fiugra 16
+d_val2<-(diff(diff(y_val)))
+
+# Opción sin subcap
+#par(mar = c(4, 4, 0.1, 0.1))
+
+plot(d_val2)
+plot.ts(d_val2[66:71])
+```
+
+
+Las predicciones del modelo arima son las de la figura 17
+
+```{r fig17Predict,fig.cap="Predicciones de serie diferenciada",echo=FALSE}
+arima_pred1<-forecast(arima_s2,h=5)
+plot(arima_pred1)
+```
+
+En la lejania podemos decir que los primeros años hay un buen ajuste pero que después se pierde. En la figura \ref{fig:validateArimaModel} podemos ver como se empalman y compararlas más de cerca, vemos que los primeros 3 años las predicciones
+son bastante buenas pero después el modelo tiende a la media y se aleja mucho de los valores reales.
+
+```{r validateArimaModel,fig.cap="\\label{fig:validateArimaModel} Validacion: Predicción vs valores reales",echo=FALSE}
+arima_pred<-predict(arima_s2,n.ahead = 5)
+d2y_val<-diff(diff(y_val))
+d2y_96<-ts(d2y_val[65:69],start=1996)
+matplot(cbind(d2y_96,arima_pred$pred),type='l',ylab="Valores")
+```
+

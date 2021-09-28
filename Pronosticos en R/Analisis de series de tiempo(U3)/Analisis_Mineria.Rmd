@@ -1,0 +1,85 @@
+---
+title: "R Notebook"
+output:
+  word_document: default
+  html_notebook: default
+---
+
+
+```{r setup, include=FALSE}
+library(outliers)
+library(readr)
+Mineria_lista <- read_csv("~/MEGAsync/MAC/Materias/Pronosticos/Hojas de calculo/Mineria_lista.csv")
+Horas_trabajadas_listo <- read_csv("~/MEGAsync/MAC/Materias/Pronosticos/Hojas de calculo/Horas_trabajadas_listo.csv")
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Muestra de las series
+
+Fuente de serie 1 https://www.inegi.org.mx/app/tabulados/default.html?nc=478, 
+esta fue tratada para solo quedarce con el índice de la producción metalurgica.
+
+Fuente de serie 2 https://www.inegi.org.mx/app/tabulados/default.html?nc=684, 
+esta fue tratada para tener solo la variación porcentual de horas trabajadas mensualmente totales.
+
+En ambas fue tratada la serie por INEGI para quitar las estacionalidades.
+
+
+```{r dibujo, echo=TRUE}
+serie1 <- ts(Mineria_lista,start = c(2000,1),frequency = 12)
+serie2 <- ts(Horas_trabajadas_listo, start = c(2019,1),freq=12)
+plot(serie1)
+plot(serie2)
+```
+
+.
+## Análisis de datos atipicos
+```{r outlaiers,echo=TRUE}
+grubbs.test(serie1) # no hay valores atipicos
+grubbs.test(serie2)
+```
+
+Se puede notar que no hay datos atipicos en la primera serie pero si en la segunda por lo que estos se tratarán.
+
+Se tomarán los dos valores que se puede apreciar son atipicos en serie2 y se sustituiran por la media.
+
+```{r cambio,echo=FALSE}
+serie2[16]=mean(serie2)
+serie2[17]=mean(serie2)
+serie2[18]=mean(serie2)
+serie2[19]=mean(serie2)
+grubbs.test(serie2)
+```
+
+Con esto podemos decir que no hay valores atipicos en la serie, aunque por la poca cantidad de datos y la 
+sustitución que se ha hecho la serie ha quedado muy golpeada, lo correcto sería hacer un test de para
+ver si estadisticamente es la misma serie pero para lo que se  busca en este trabajo se omitirá.
+
+Abajo podemos ver su gráfica.
+
+```{r seriedibujada,echo=TRUE}
+plot(serie2)
+```
+
+## Analisis de correlogramas de serie 1
+
+```{r serie1acf, echo=TRUE}
+acf(serie1,lag.max = 240)
+pacf(serie1)
+```
+La serie 1 muestra indicios de ser autorregresiva, aunque el desenso no tan rapido en la acf puede
+causarnos preocupación de que sea estacionaria.Y suponemos que es autoregresiva por que se da un truncamiento 
+inmediato en el primer periodo de la pacf. Pero no hay indicios de que también sea de medias moviles por
+lo que se descarta que sea un modelo ARMA en principio.
+
+## Analisis de correlogramas de serie 2
+```{r seri2acf, echo=TRUE}
+acf(serie2)
+pacf(serie2)
+```
+
+La acf no parece dar indicios ni de un modelo AR ni tampoco un MA pues solo tiene un valor minimamente
+signigicativo y no esta en el primer periodo para ser MA. Mientras que la pacf tampoco nos da indicios
+de que sea alguno de los dos por que solo tiene un valor minimamente significativo y esta en el segundo periodo,
+por lo que no nos sirve para interpretar si es de alguno de los modelos o un ARMA.
+

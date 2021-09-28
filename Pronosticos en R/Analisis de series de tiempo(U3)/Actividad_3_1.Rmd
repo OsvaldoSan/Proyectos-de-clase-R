@@ -1,0 +1,91 @@
+---
+title: "Actividad 3.1"
+author: "Osvaldo"
+date: "3/5/2021"
+output:
+  word_document: default
+  html_document: default
+---
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Proceso MA(1)
+El proceso MA(1)  esta definido como $y_{t}=2+\epsilon_{t}+0.8\epsilon_{t-1}$.
+Así que $\mu$=2, $\theta_{1}=1$ y $\theta_{2}=0.8$.
+
+Se simularán primero los choques aleatorios como ruido blanco gaussiano, es decir, con varianza uno.
+
+```{r simulacion,echo = FALSE}
+ruido_blanco=rnorm(1000,0,1)
+plot.ts(ruido_blanco,main='Ruido blanco gaussiano',col='red',xlab='Observaciones',ylab='Valores')
+```
+
+Ya con los choques se utilizará la ecuación del principio para calcular las mil observaciones de la serie
+de tiempo.
+```{r simulacion_y,echo=FALSE}
+y=list()
+y[1]=2+ruido_blanco[1]
+for (i in 2:1000){
+  y[i]=2+ruido_blanco[i]+(0.8)*ruido_blanco[i-1]
+}
+y=ts(y)
+plot(y)
+```
+
+En principio la serie de tiempo y su gráfica no nos dicen mucho, pero vamos a analizar lo que sucede con los
+correlogramas de su ACF y PACF.
+
+```{r ACF}
+acf(as.numeric(y))
+```
+
+Su ACF confirma que en efecto es un modelo MA(1) pues se trunca inmediatamente despues de 1 su correlograma.
+
+```{r PACF,echo=FALSE}
+pacf(as.numeric(y))
+```
+
+Mientras que su PACF nos muestra que después de unas 6 o 7 observaciones la variable aleatoria ya no tiene niguna
+relación con las anteriores.
+
+## Proceso MA(2)
+
+Queda definido como $y_{t}=2+\epsilon_{t}+0.6\epsilon_{t-1}-0.3\epsilon_{t-2}$, y la simulación de su serie de 
+tiempo se muestra en la siguiente gráfica.
+
+```{r simulacion_y1,echo=FALSE}
+y1=list()
+y1[1]=2+ruido_blanco[1]
+y1[2]=2+ruido_blanco[2]+(0.6*ruido_blanco[1])
+for (i in 3:1000){
+  y1[i]=2+ruido_blanco[i]+(0.6*ruido_blanco[i-1])-(0.3*ruido_blanco[i-2])
+}
+y1=ts(y1)
+plot(y1)
+```
+
+Que tiene como ACF y PACF a
+
+```{r ACF2}
+acf(as.numeric(y1))
+```
+
+Se ve evidente que el modelo tiene memoria de solo dos periodos, como debe ser para un MA(2).
+
+```{r PACF2,echo=FALSE}
+pacf(as.numeric(y))
+```
+
+La PACF tiene un descenso geometrico y en este caso la relación de la variable aleatoria con
+sus observaciones anteriores desaparece para la sexta observación casi por completo.
+
+## Conclusiones
+
+Algo que resulta sumamente curioso es que a pesar de que ambas series de tiempo simuladas tienen aspecto
+de ruido blanco cuando se gráfican, el comportamiento de ambas en sus correspondientes correlogramas
+para la ACF y PACF está totalmente apegado a lo que la teoría dice, lo que no debería sorprender pues
+todo lo que se ha hecho aquí está basado en esa teoría, pero como se dijo y se ve al principio su comportamiento
+en principio parece solo el de choques aleatorios con una media dada.
+
